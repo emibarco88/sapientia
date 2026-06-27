@@ -1,6 +1,30 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+
+# Virtual Environment
+.venv/
+venv/
+
+# Environment Variables
 .env
+
+# macOS
 .DS_Store
+
+# VS Code
 .vscode/
+
+# Logs
+*.log
+
+# Python cache
+.pytest_cache/
+
+# Coverage
+.coverage
+
+# Build
+dist/
+build/
