@@ -1,3 +1,11 @@
+"""
+Module: settings.py
+
+Purpose:
+Loads application configuration from the .env file and exposes
+configuration values to the application.
+"""
+
 import os
 from dotenv import load_dotenv
 
@@ -13,3 +21,5 @@ DATABASE_URL = (
     f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}"
     f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
+
+

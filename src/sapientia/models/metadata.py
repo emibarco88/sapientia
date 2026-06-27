@@ -1,3 +1,10 @@
+"""
+Module: metadata.py
+
+Purpose:
+Defines the common metadata objects shared by all connectors
+and services.
+"""
 from dataclasses import dataclass, field
 from typing import Optional, List
 

@@ -1,3 +1,10 @@
+"""
+Module: main.py
+
+Purpose:
+Application entry point used to execute and test metadata
+ingestion workflows.
+"""
 import argparse
 from sapientia.services.metadata_service import MetadataService
 

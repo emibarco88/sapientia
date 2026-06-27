@@ -1,10 +1,17 @@
+"""
+Module: csv_connector.py
+
+Purpose:
+Reads CSV files and converts their structure into the common
+Sapientia metadata model.
+"""
 import os
 import pandas as pd
 
 from sapientia.models.metadata import DatasetMetadata, ColumnMetadata
+from sapientia.connectors.base_connector import BaseConnector
 
-
-class CSVConnector:
+class CSVConnector(BaseConnector):
     def extract_metadata(self, file_path: str) -> DatasetMetadata:
         df = pd.read_csv(file_path)
 

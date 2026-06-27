@@ -1,3 +1,9 @@
+"""
+Module: column_repository.py
+
+Purpose:
+Provides CRUD operations for the omd_core.column table.
+"""
 from sqlalchemy import text
 from sapientia.models.metadata import ColumnMetadata
 

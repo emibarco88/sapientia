@@ -1,3 +1,9 @@
+"""
+Module: dataset_repository.py
+
+Purpose:
+Provides CRUD operations for the omd_core.dataset table.
+"""
 from sqlalchemy import text
 
 

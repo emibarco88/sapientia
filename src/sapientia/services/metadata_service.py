@@ -1,3 +1,10 @@
+"""
+Module: metadata_service.py
+
+Purpose:
+Coordinates metadata extraction and persistence into the
+Operational Metadata Repository (OMD).
+"""
 from sapientia.db.connection import get_engine
 from sapientia.connectors.csv.csv_connector import CSVConnector
 from sapientia.repositories.source_system_repository import SourceSystemRepository
