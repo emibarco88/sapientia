@@ -1,0 +1,59 @@
+{
+    "invoices": [
+      {
+        "invoice_id": "INV30001",
+        "customer": {
+          "id": "CUST1001",
+          "name": "Acme Manufacturing",
+          "address": {
+            "city": "Sydney",
+            "country": "Australia"
+          }
+        },
+        "invoice_date": "2026-01-05",
+        "currency": "AUD",
+        "amounts": {
+          "subtotal": 12500.75,
+          "tax": 1250.08,
+          "total": 13750.83
+        },
+        "payment": {
+          "status": "PAID",
+          "paid_at": "2026-01-15T10:30:00Z"
+        },
+        "line_items": [
+          {
+            "product_id": "P100",
+            "description": "Consulting Services",
+            "quantity": 10,
+            "unit_price": 1000.00
+          },
+          {
+            "product_id": "P200",
+            "description": "Platform Fee",
+            "quantity": 1,
+            "unit_price": 2500.75
+          }
+        ]
+      },
+      {
+        "invoice_id": "INV30002",
+        "customer": {
+          "id": "CUST1002",
+          "name": "BlueSky Retail"
+        },
+        "invoice_date": "2026-01-10",
+        "currency": "USD",
+        "amounts": {
+          "subtotal": 8400,
+          "tax": 840,
+          "total": 9240
+        },
+        "payment": {
+          "status": "PENDING",
+          "paid_at": null
+        },
+        "line_items": []
+      }
+    ]
+  }

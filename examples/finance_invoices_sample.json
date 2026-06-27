@@ -1,0 +1,26 @@
+[
+    {
+      "invoice_id": "INV20001",
+      "customer_id": "CUST1001",
+      "customer_name": "Acme Manufacturing",
+      "invoice_date": "2026-01-05",
+      "due_date": "2026-02-04",
+      "currency": "AUD",
+      "invoice_amount": 12500.75,
+      "tax_amount": 1250.08,
+      "total_amount": 13750.83,
+      "payment_status": "PAID"
+    },
+    {
+      "invoice_id": "INV20002",
+      "customer_id": "CUST1002",
+      "customer_name": "BlueSky Retail",
+      "invoice_date": "2026-01-10",
+      "due_date": "2026-02-09",
+      "currency": "USD",
+      "invoice_amount": 8400.00,
+      "tax_amount": 840.00,
+      "total_amount": 9240.00,
+      "payment_status": "PENDING"
+    }
+  ]

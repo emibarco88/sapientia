@@ -14,6 +14,7 @@ from sapientia.connectors.base_connector import BaseConnector
 class CSVConnector(BaseConnector):
     def extract_metadata(self, file_path: str) -> DatasetMetadata:
         df = pd.read_csv(file_path)
+        records = df.where(pd.notnull(df), None).to_dict(orient="records")
 
         columns = []
 
@@ -38,6 +39,7 @@ class CSVConnector(BaseConnector):
             column_count=len(df.columns),
             file_size_bytes=os.path.getsize(file_path),
             columns=columns,
+            records=records,
         )
 
     def _map_dtype(self, series) -> str:

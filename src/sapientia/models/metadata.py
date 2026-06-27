@@ -5,6 +5,7 @@ Purpose:
 Defines the common metadata objects shared by all connectors
 and services.
 """
+
 from dataclasses import dataclass, field
 from typing import Optional, List
 
@@ -22,6 +23,15 @@ class ColumnMetadata:
 
 
 @dataclass
+class RelationshipMetadata:
+    parent_dataset_name: str
+    child_dataset_name: str
+    relationship_type: str
+    description: Optional[str] = None
+    confidence: Optional[float] = None
+
+
+@dataclass
 class DatasetMetadata:
     name: str
     object_type: str
@@ -30,7 +40,9 @@ class DatasetMetadata:
     column_count: int
     file_size_bytes: Optional[int] = None
     columns: List[ColumnMetadata] = field(default_factory=list)
-
+    child_datasets: List["DatasetMetadata"] = field(default_factory=list)
+    relationships: List[RelationshipMetadata] = field(default_factory=list)
+    records: list[dict] = field(default_factory=list) #Every connector can now return metadata + records#
 
 @dataclass
 class SourceSystemMetadata:
