@@ -1,1 +1,1 @@
-CREATE DATABASE aidp;
+CREATE DATABASE sapientia;
