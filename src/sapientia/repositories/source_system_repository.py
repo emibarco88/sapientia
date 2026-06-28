@@ -8,7 +8,7 @@ class SourceSystemRepository:
     def get_by_name(self, project_id: int, name: str):
         sql = text("""
             SELECT source_system_id
-            FROM omd_core.source_system
+            FROM ekr_core.source_system
             WHERE project_id = :project_id
               AND name = :name
         """)
@@ -22,7 +22,7 @@ class SourceSystemRepository:
 
     def create(self, project_id: int, name: str, source_type: str, description: str = None) -> int:
         sql = text("""
-            INSERT INTO omd_core.source_system
+            INSERT INTO ekr_core.source_system
             (
                 project_id,
                 name,

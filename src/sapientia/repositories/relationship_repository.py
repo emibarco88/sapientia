@@ -2,7 +2,7 @@
 Module: relationship_repository.py
 
 Purpose:
-Provides CRUD operations for the omd_core.relationship table.
+Provides CRUD operations for the ekr_core.relationship table.
 """
 
 from sqlalchemy import text
@@ -15,7 +15,7 @@ class RelationshipRepository:
 
     def delete_by_parent_dataset(self, parent_dataset_id: int) -> None:
         sql = text("""
-            DELETE FROM omd_core.relationship
+            DELETE FROM ekr_core.relationship
             WHERE parent_dataset_id = :parent_dataset_id
         """)
 
@@ -28,7 +28,7 @@ class RelationshipRepository:
         relationship: RelationshipMetadata,
     ) -> int:
         sql = text("""
-            INSERT INTO omd_core.relationship
+            INSERT INTO ekr_core.relationship
             (
                 parent_dataset_id,
                 child_dataset_id,

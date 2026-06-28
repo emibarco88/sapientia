@@ -2,11 +2,13 @@
 Module: metadata_service.py
 
 Purpose:
-Coordinates metadata extraction and persistence into the
-Operational Metadata Repository (OMD).
+Coordinates metadata extraction, profiling and persistence into the
+Enterprise Knowledge Repository (EKR).
 """
 
 from sapientia.db.connection import get_engine
+
+from sapientia.config.profiling_config import ProfilingConfig
 
 from sapientia.connectors.csv.csv_connector import CSVConnector
 from sapientia.connectors.json.json_connector import JSONConnector
@@ -34,7 +36,13 @@ class MetadataService:
 
     def ingest_csv(self, project_id: int, file_path: str) -> dict:
         connector = CSVConnector()
-        dataset_metadata = connector.extract_metadata(file_path)
+
+        dataset_metadata = connector.extract_schema(file_path)
+
+        profile_records = connector.extract_records(
+            source=file_path,
+            limit=ProfilingConfig.SAMPLE_SIZE,
+        )
 
         engine = get_engine()
 
@@ -67,7 +75,7 @@ class MetadataService:
 
             self._persist_profile(
                 dataset_id=dataset_id,
-                records=dataset_metadata.records,
+                records=profile_records,
                 connection=connection,
             )
 
@@ -75,12 +83,27 @@ class MetadataService:
             "source_system_id": source_system_id,
             "dataset_id": dataset_id,
             "columns_refreshed": len(dataset_metadata.columns),
+            "profiled_records": len(profile_records),
+            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE,
             "profiled": True,
         }
 
     def ingest_json(self, project_id: int, file_path: str) -> dict:
         connector = JSONConnector()
-        dataset_metadata = connector.extract_metadata(file_path)
+
+        dataset_metadata = connector.extract_schema(file_path)
+
+        profile_dataset_metadata = connector.engine.extract(
+            file_path=file_path,
+            include_records=True,
+        )
+
+        profile_records = profile_dataset_metadata.records
+
+        profile_child_records = {
+            child.name: child.records
+            for child in profile_dataset_metadata.child_datasets
+        }
 
         engine = get_engine()
 
@@ -114,7 +137,7 @@ class MetadataService:
 
             self._persist_profile(
                 dataset_id=parent_dataset_id,
-                records=dataset_metadata.records,
+                records=profile_records,
                 connection=connection,
             )
 
@@ -138,9 +161,11 @@ class MetadataService:
                     columns=child_dataset.columns,
                 )
 
+                child_records = profile_child_records.get(child_dataset.name, [])
+
                 self._persist_profile(
                     dataset_id=child_dataset_id,
-                    records=child_dataset.records,
+                    records=child_records,
                     connection=connection,
                 )
 
@@ -162,5 +187,7 @@ class MetadataService:
             "child_datasets_created_or_updated": len(dataset_metadata.child_datasets),
             "relationships_created": len(dataset_metadata.relationships),
             "parent_columns_refreshed": len(dataset_metadata.columns),
+            "profiled_records": len(profile_records),
+            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE,
             "profiled": True,
         }

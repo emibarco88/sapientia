@@ -2,7 +2,7 @@
 Module: dataset_repository.py
 
 Purpose:
-Provides CRUD operations for the omd_core.dataset table.
+Provides CRUD operations for the ekr_core.dataset table.
 """
 from sqlalchemy import text
 
@@ -14,7 +14,7 @@ class DatasetRepository:
     def get_by_location(self, source_system_id: int, location: str):
         sql = text("""
             SELECT dataset_id
-            FROM omd_core.dataset
+            FROM ekr_core.dataset
             WHERE source_system_id = :source_system_id
               AND location = :location
         """)
@@ -37,7 +37,7 @@ class DatasetRepository:
         file_size_bytes: int = None,
     ) -> int:
         sql = text("""
-            INSERT INTO omd_core.dataset
+            INSERT INTO ekr_core.dataset
             (
                 source_system_id,
                 name,
@@ -80,7 +80,7 @@ class DatasetRepository:
         file_size_bytes: int = None,
     ) -> None:
         sql = text("""
-            UPDATE omd_core.dataset
+            UPDATE ekr_core.dataset
             SET
                 row_count = :row_count,
                 column_count = :column_count,

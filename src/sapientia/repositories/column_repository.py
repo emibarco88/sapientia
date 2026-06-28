@@ -2,7 +2,7 @@
 Module: column_repository.py
 
 Purpose:
-Provides CRUD operations for the omd_core.column table.
+Provides CRUD operations for the ekr_core.column table.
 """
 from sqlalchemy import text
 from sapientia.models.metadata import ColumnMetadata
@@ -14,7 +14,7 @@ class ColumnRepository:
 
     def delete_by_dataset(self, dataset_id: int) -> None:
         sql = text("""
-            DELETE FROM omd_core."column"
+            DELETE FROM ekr_core."column"
             WHERE dataset_id = :dataset_id
         """)
 
@@ -22,7 +22,7 @@ class ColumnRepository:
 
     def create_many(self, dataset_id: int, columns: list[ColumnMetadata]) -> None:
         sql = text("""
-            INSERT INTO omd_core."column"
+            INSERT INTO ekr_core."column"
             (
                 dataset_id,
                 name,

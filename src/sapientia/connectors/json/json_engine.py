@@ -18,7 +18,7 @@ class JSONEngine:
         self.flattener = JSONFlattener()
         self.type_inferer = JSONTypeInferer()
 
-    def extract(self, file_path: str) -> DatasetMetadata:
+    def extract(self, file_path: str, include_records: bool = False) -> DatasetMetadata:
         data = self.loader.load(file_path)
 
         root_name = os.path.basename(file_path)
@@ -46,7 +46,7 @@ class JSONEngine:
                     column_count=len(child_columns),
                     file_size_bytes=None,
                     columns=child_columns,
-                    records=child_records,
+                    records=child_records if include_records else [],
                 )
             )
 
@@ -60,18 +60,18 @@ class JSONEngine:
                 )
             )
 
-        return DatasetMetadata(
-            name=root_name,
-            object_type="JSON",
-            location=file_path,
-            row_count=len(parent_records),
-            column_count=len(parent_columns),
-            file_size_bytes=os.path.getsize(file_path),
-            columns=parent_columns,
-            child_datasets=child_datasets,
-            relationships=relationships,
-            records=parent_records,
-        )
+            return DatasetMetadata(
+                name=root_name,
+                object_type="JSON",
+                location=file_path,
+                row_count=len(parent_records),
+                column_count=len(parent_columns),
+                file_size_bytes=os.path.getsize(file_path),
+                columns=parent_columns,
+                child_datasets=child_datasets,
+                relationships=relationships,
+                records=parent_records if include_records else [],
+            )
 
     def _build_columns(self, records: list[dict]) -> list[ColumnMetadata]:
         column_names = self._all_column_names(records)

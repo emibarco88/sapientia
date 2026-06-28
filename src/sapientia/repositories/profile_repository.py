@@ -2,7 +2,7 @@
 Module: profile_repository.py
 
 Purpose:
-Persists generic profiling results into omd_profile tables.
+Persists generic profiling results into ekr_profile tables.
 """
 
 import json
@@ -24,7 +24,7 @@ class ProfileRepository:
         column_ids = self.connection.execute(
             text("""
                 SELECT column_id
-                FROM omd_core."column"
+                FROM ekr_core."column"
                 WHERE dataset_id = :dataset_id
             """),
             {"dataset_id": dataset_id},
@@ -33,26 +33,26 @@ class ProfileRepository:
         for row in column_ids:
             self.connection.execute(
                 text("""
-                    DELETE FROM omd_profile.column_profile
+                    DELETE FROM ekr_profile.column_profile
                     WHERE column_id = :column_id
                 """),
                 {"column_id": row.column_id},
             )
 
         self.connection.execute(
-            text("DELETE FROM omd_profile.dataset_profile WHERE dataset_id = :dataset_id"),
+            text("DELETE FROM ekr_profile.dataset_profile WHERE dataset_id = :dataset_id"),
             {"dataset_id": dataset_id},
         )
 
         self.connection.execute(
-            text("DELETE FROM omd_profile.sample_data WHERE dataset_id = :dataset_id"),
+            text("DELETE FROM ekr_profile.sample_data WHERE dataset_id = :dataset_id"),
             {"dataset_id": dataset_id},
         )
 
     def _insert_dataset_profile(self, dataset_id: int, profile: DatasetProfile) -> None:
         self.connection.execute(
             text("""
-                INSERT INTO omd_profile.dataset_profile
+                INSERT INTO ekr_profile.dataset_profile
                 (
                     dataset_id,
                     row_count,
@@ -84,7 +84,7 @@ class ProfileRepository:
 
         self.connection.execute(
             text("""
-                INSERT INTO omd_profile.sample_data
+                INSERT INTO ekr_profile.sample_data
                 (
                     dataset_id,
                     sample_json
@@ -112,7 +112,7 @@ class ProfileRepository:
 
             self.connection.execute(
                 text("""
-                    INSERT INTO omd_profile.column_profile
+                    INSERT INTO ekr_profile.column_profile
                     (
                         column_id,
                         null_count,
@@ -202,7 +202,7 @@ class ProfileRepository:
         rows = self.connection.execute(
             text("""
                 SELECT column_id, name
-                FROM omd_core."column"
+                FROM ekr_core."column"
                 WHERE dataset_id = :dataset_id
             """),
             {"dataset_id": dataset_id},

@@ -2,7 +2,7 @@
 Module: semantic_repository.py
 
 Purpose:
-Persists semantic analysis results into omd_semantic tables.
+Persists semantic analysis results into ekr_semantic tables.
 """
 
 import json
@@ -29,8 +29,8 @@ class SemanticRepository:
                 cp.numeric_summary,
                 cp.date_summary,
                 cp.top_values
-            FROM omd_core."column" c
-            LEFT JOIN omd_profile.column_profile cp
+            FROM ekr_core."column" c
+            LEFT JOIN ekr_profile.column_profile cp
                 ON cp.column_id = c.column_id
             WHERE c.dataset_id = :dataset_id
             ORDER BY c.ordinal_position
@@ -42,7 +42,7 @@ class SemanticRepository:
 
     def upsert_column_semantic(self, semantic: ColumnSemantic) -> None:
         sql = text("""
-            INSERT INTO omd_semantic.column_semantic
+            INSERT INTO ekr_semantic.column_semantic
             (
                 column_id,
                 semantic_type,
