@@ -16,10 +16,6 @@ CREATE TABLE ekr_knowledge.document
         ON DELETE CASCADE
 );
 
-COMMENT ON TABLE ekr_knowledge.document IS
-'Stores documents and enterprise knowledge sources acquired by Sapientia.';
-
-
 CREATE TABLE ekr_knowledge.document_chunk
 (
     document_chunk_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -40,10 +36,6 @@ CREATE TABLE ekr_knowledge.document_chunk
         UNIQUE (document_id, chunk_number)
 );
 
-COMMENT ON TABLE ekr_knowledge.document_chunk IS
-'Stores document sections used as granular units for knowledge extraction.';
-
-
 CREATE TABLE ekr_knowledge.knowledge_item
 (
     knowledge_item_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -62,10 +54,6 @@ CREATE TABLE ekr_knowledge.knowledge_item
         REFERENCES ekr_core.project(project_id)
         ON DELETE CASCADE
 );
-
-COMMENT ON TABLE ekr_knowledge.knowledge_item IS
-'Stores canonical knowledge extracted or inferred by Sapientia, such as business terms, KPIs, business rules, policies and data asset references.';
-
 
 CREATE TABLE ekr_knowledge.knowledge_evidence
 (
@@ -99,10 +87,6 @@ CREATE TABLE ekr_knowledge.knowledge_evidence
         ON DELETE SET NULL
 );
 
-COMMENT ON TABLE ekr_knowledge.knowledge_evidence IS
-'Stores evidence supporting each knowledge item, including the document, chunk, rule and source text used during extraction.';
-
-
 CREATE TABLE ekr_knowledge.knowledge_confidence
 (
     knowledge_confidence_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -124,19 +108,24 @@ CREATE TABLE ekr_knowledge.knowledge_confidence
         ON DELETE CASCADE
 );
 
-COMMENT ON TABLE ekr_knowledge.knowledge_confidence IS
-'Stores explainable confidence components for knowledge items. AI validation can be added later as one confidence component.';
-
-
 CREATE TABLE ekr_knowledge.knowledge_asset_link
 (
     knowledge_asset_link_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     knowledge_item_id       BIGINT NOT NULL,
     dataset_id              BIGINT,
     column_id               BIGINT,
+
     link_type               VARCHAR(100) NOT NULL,
+    resolution_status       VARCHAR(100) NOT NULL,
+    match_strategy          VARCHAR(100) NOT NULL,
+
     confidence_score        NUMERIC(10,4),
     reasoning               TEXT,
+    reasoning_json          JSONB,
+
+    created_by_engine       VARCHAR(200),
+    engine_version          VARCHAR(50),
+
     created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
 
     CONSTRAINT fk_knowledge_asset_link_item
@@ -154,10 +143,6 @@ CREATE TABLE ekr_knowledge.knowledge_asset_link
         REFERENCES ekr_core."column"(column_id)
         ON DELETE CASCADE
 );
-
-COMMENT ON TABLE ekr_knowledge.knowledge_asset_link IS
-'Links knowledge items to EKR Core datasets and columns.';
-
 
 CREATE TABLE ekr_knowledge.knowledge_relationship
 (
@@ -181,10 +166,6 @@ CREATE TABLE ekr_knowledge.knowledge_relationship
         ON DELETE CASCADE
 );
 
-COMMENT ON TABLE ekr_knowledge.knowledge_relationship IS
-'Stores relationships between knowledge items, such as KPI depends on business rule or business term related to data asset reference.';
-
-
 CREATE INDEX idx_document_project ON ekr_knowledge.document(project_id);
 CREATE INDEX idx_document_chunk_document ON ekr_knowledge.document_chunk(document_id);
 CREATE INDEX idx_knowledge_item_project ON ekr_knowledge.knowledge_item(project_id);
@@ -192,4 +173,54 @@ CREATE INDEX idx_knowledge_item_type ON ekr_knowledge.knowledge_item(knowledge_t
 CREATE INDEX idx_knowledge_evidence_item ON ekr_knowledge.knowledge_evidence(knowledge_item_id);
 CREATE INDEX idx_knowledge_confidence_item ON ekr_knowledge.knowledge_confidence(knowledge_item_id);
 CREATE INDEX idx_knowledge_asset_link_item ON ekr_knowledge.knowledge_asset_link(knowledge_item_id);
+CREATE INDEX idx_knowledge_asset_link_dataset ON ekr_knowledge.knowledge_asset_link(dataset_id);
+CREATE INDEX idx_knowledge_asset_link_column ON ekr_knowledge.knowledge_asset_link(column_id);
+CREATE INDEX idx_knowledge_asset_link_status ON ekr_knowledge.knowledge_asset_link(resolution_status);
 CREATE INDEX idx_knowledge_relationship_source ON ekr_knowledge.knowledge_relationship(source_knowledge_item_id);
+
+CREATE OR REPLACE VIEW ekr_knowledge.vw_fusion_links AS
+SELECT
+    ki.knowledge_item_id,
+    ki.knowledge_type,
+    ki.name AS knowledge_name,
+    ki.description AS knowledge_description,
+    d.name AS dataset_name,
+    c.name AS column_name,
+    cs.semantic_type,
+    cs.business_meaning,
+    cs.business_domain,
+    kal.link_type,
+    kal.resolution_status,
+    kal.match_strategy,
+    kal.confidence_score,
+    kal.reasoning_json,
+    kal.created_by_engine,
+    kal.engine_version,
+    kal.created_at
+FROM ekr_knowledge.knowledge_asset_link kal
+JOIN ekr_knowledge.knowledge_item ki
+    ON ki.knowledge_item_id = kal.knowledge_item_id
+LEFT JOIN ekr_core.dataset d
+    ON d.dataset_id = kal.dataset_id
+LEFT JOIN ekr_core."column" c
+    ON c.column_id = kal.column_id
+LEFT JOIN ekr_semantic.column_semantic cs
+    ON cs.column_id = c.column_id;
+
+CREATE OR REPLACE VIEW ekr_knowledge.vw_fusion_resolved_links AS
+SELECT *
+FROM ekr_knowledge.vw_fusion_links
+WHERE resolution_status = 'RESOLVED';
+
+CREATE OR REPLACE VIEW ekr_knowledge.vw_fusion_possible_links AS
+SELECT *
+FROM ekr_knowledge.vw_fusion_links
+WHERE resolution_status = 'POSSIBLE_MATCH';
+
+CREATE OR REPLACE VIEW ekr_knowledge.vw_fusion_ambiguous_links AS
+SELECT *
+FROM ekr_knowledge.vw_fusion_links
+WHERE resolution_status = 'AMBIGUOUS';
+
+COMMENT ON TABLE ekr_knowledge.knowledge_asset_link IS
+'Stores explainable links between acquired knowledge and technical data assets created by the Knowledge Fusion Engine.';

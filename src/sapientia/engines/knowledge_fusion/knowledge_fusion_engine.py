@@ -39,7 +39,6 @@ class KnowledgeFusionEngine:
                 if scored_link:
                     scored_links.append(scored_link)
 
-            # Keep only best links per knowledge item + column.
             unique_links = self._deduplicate_links(scored_links)
 
             for link in unique_links:

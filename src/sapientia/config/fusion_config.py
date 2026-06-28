@@ -1,0 +1,26 @@
+"""
+Module: fusion_config.py
+
+Purpose:
+Configuration for the Knowledge Fusion Engine.
+"""
+
+
+class FusionConfig:
+
+    ENGINE_NAME = "KnowledgeFusionEngine"
+    ENGINE_VERSION = "1.0"
+
+    DIRECT_REFERENCE_SCORE = 100.0
+
+    RESOLVED_THRESHOLD = 80.0
+    POSSIBLE_MATCH_THRESHOLD = 60.0
+    AMBIGUOUS_DELTA = 5.0
+
+    NAME_SIMILARITY_WEIGHT = 0.35
+    SEMANTIC_SIMILARITY_WEIGHT = 0.25
+    DOMAIN_SIMILARITY_WEIGHT = 0.10
+    PROFILE_COMPATIBILITY_WEIGHT = 0.15
+    KNOWLEDGE_CONFIDENCE_WEIGHT = 0.15
+
+    MAX_CANDIDATES_PER_KNOWLEDGE_ITEM = 25

@@ -94,8 +94,13 @@ class KnowledgeFusionRepository:
                     dataset_id,
                     column_id,
                     link_type,
+                    resolution_status,
+                    match_strategy,
                     confidence_score,
-                    reasoning
+                    reasoning,
+                    reasoning_json,
+                    created_by_engine,
+                    engine_version
                 )
                 VALUES
                 (
@@ -103,8 +108,13 @@ class KnowledgeFusionRepository:
                     :dataset_id,
                     :column_id,
                     :link_type,
+                    :resolution_status,
+                    :match_strategy,
                     :confidence_score,
-                    :reasoning
+                    :reasoning,
+                    CAST(:reasoning_json AS JSONB),
+                    :created_by_engine,
+                    :engine_version
                 )
             """),
             {
@@ -112,7 +122,16 @@ class KnowledgeFusionRepository:
                 "dataset_id": link.get("dataset_id"),
                 "column_id": link.get("column_id"),
                 "link_type": link["link_type"],
+                "resolution_status": link["resolution_status"],
+                "match_strategy": link["match_strategy"],
                 "confidence_score": link["confidence_score"],
-                "reasoning": json.dumps(link["reasoning"], default=str, allow_nan=False),
+                "reasoning": link["reasoning"],
+                "reasoning_json": json.dumps(
+                    link["reasoning_json"],
+                    default=str,
+                    allow_nan=False,
+                ),
+                "created_by_engine": link["created_by_engine"],
+                "engine_version": link["engine_version"],
             },
         )

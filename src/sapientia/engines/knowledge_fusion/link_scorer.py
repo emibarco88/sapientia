@@ -8,12 +8,10 @@ Scores candidate links between knowledge items and EKR data assets.
 import re
 from difflib import SequenceMatcher
 
+from sapientia.config.fusion_config import FusionConfig
+
 
 class LinkScorer:
-
-    DIRECT_REFERENCE_SCORE = 100.0
-    STRONG_LINK_THRESHOLD = 80.0
-    POSSIBLE_LINK_THRESHOLD = 60.0
 
     def score_candidate(self, candidate: dict) -> dict | None:
         knowledge = candidate["knowledge_item"]
@@ -32,17 +30,33 @@ class LinkScorer:
 
         final_score = self._weighted_score(scores)
 
-        if final_score < self.POSSIBLE_LINK_THRESHOLD:
+        if final_score < FusionConfig.POSSIBLE_MATCH_THRESHOLD:
             return None
+
+        match_strategy = self._match_strategy(scores)
+        resolution_status = self._resolution_status(final_score)
 
         return {
             "knowledge_item_id": knowledge["knowledge_item_id"],
             "dataset_id": asset["dataset_id"],
             "column_id": asset["column_id"],
-            "link_type": self._link_type(final_score),
+            "link_type": self._link_type(resolution_status),
+            "resolution_status": resolution_status,
+            "match_strategy": match_strategy,
             "confidence_score": final_score,
-            "reasoning": {
+            "reasoning": f"{match_strategy} produced {final_score} confidence.",
+            "reasoning_json": {
                 "scores": scores,
+                "final_score": final_score,
+                "match_strategy": match_strategy,
+                "resolution_status": resolution_status,
+                "weights": {
+                    "name_similarity": FusionConfig.NAME_SIMILARITY_WEIGHT,
+                    "semantic_similarity": FusionConfig.SEMANTIC_SIMILARITY_WEIGHT,
+                    "domain_similarity": FusionConfig.DOMAIN_SIMILARITY_WEIGHT,
+                    "profile_compatibility": FusionConfig.PROFILE_COMPATIBILITY_WEIGHT,
+                    "knowledge_confidence": FusionConfig.KNOWLEDGE_CONFIDENCE_WEIGHT,
+                },
                 "knowledge_item": {
                     "name": knowledge.get("name"),
                     "knowledge_type": knowledge.get("knowledge_type"),
@@ -54,26 +68,26 @@ class LinkScorer:
                     "semantic_type": asset.get("semantic_type"),
                     "business_meaning": asset.get("business_meaning"),
                     "business_domain": asset.get("business_domain"),
+                    "profile_inferred_type": asset.get("inferred_data_type"),
                 },
             },
+            "created_by_engine": FusionConfig.ENGINE_NAME,
+            "engine_version": FusionConfig.ENGINE_VERSION,
         }
 
     def _direct_reference_score(self, knowledge: dict, asset: dict) -> float:
-        name = str(knowledge.get("name") or "").lower()
-        description = str(knowledge.get("description") or "").lower()
-        combined = f"{name} {description}"
+        text = self._normalise(
+            f"{knowledge.get('name')} {knowledge.get('description')}"
+        )
 
-        dataset_name = str(asset.get("dataset_name") or "").lower()
-        column_name = str(asset.get("column_name") or "").lower()
+        dataset_name = self._normalise(asset.get("dataset_name"))
+        column_name = self._normalise(asset.get("column_name"))
 
-        references = [
-            f"{dataset_name}.{column_name}",
-            column_name,
-        ]
+        if dataset_name and column_name and f"{dataset_name}_{column_name}" in text:
+            return FusionConfig.DIRECT_REFERENCE_SCORE
 
-        for reference in references:
-            if reference and reference in combined:
-                return 100.0
+        if column_name and column_name in text:
+            return FusionConfig.DIRECT_REFERENCE_SCORE
 
         return 0.0
 
@@ -81,16 +95,12 @@ class LinkScorer:
         knowledge_name = self._normalise(knowledge.get("name"))
         knowledge_description = self._normalise(knowledge.get("description"))
 
-        column_name = self._normalise(asset.get("column_name"))
-        business_meaning = self._normalise(asset.get("business_meaning"))
-        semantic_type = self._normalise(asset.get("semantic_type"))
-
         comparisons = [
-            self._similarity(knowledge_name, column_name),
-            self._similarity(knowledge_name, business_meaning),
-            self._similarity(knowledge_name, semantic_type),
-            self._similarity(knowledge_description, column_name),
-            self._similarity(knowledge_description, business_meaning),
+            self._similarity(knowledge_name, self._normalise(asset.get("column_name"))),
+            self._similarity(knowledge_name, self._normalise(asset.get("business_meaning"))),
+            self._similarity(knowledge_name, self._normalise(asset.get("semantic_type"))),
+            self._similarity(knowledge_description, self._normalise(asset.get("column_name"))),
+            self._similarity(knowledge_description, self._normalise(asset.get("business_meaning"))),
         ]
 
         return round(max(comparisons), 4)
@@ -112,10 +122,10 @@ class LinkScorer:
         semantic_tokens = set(semantic_type.split("_"))
         text_tokens = set(text.split("_"))
 
-        overlap = semantic_tokens.intersection(text_tokens)
-
         if not semantic_tokens:
             return 0.0
+
+        overlap = semantic_tokens.intersection(text_tokens)
 
         return round((len(overlap) / len(semantic_tokens)) * 100, 4)
 
@@ -153,21 +163,51 @@ class LinkScorer:
         return 50.0
 
     def _weighted_score(self, scores: dict) -> float:
-        if scores["direct_reference_score"] == 100.0:
-            return 100.0
+        if scores["direct_reference_score"] == FusionConfig.DIRECT_REFERENCE_SCORE:
+            return FusionConfig.DIRECT_REFERENCE_SCORE
 
         score = (
-            scores["name_similarity_score"] * 0.35
-            + scores["semantic_similarity_score"] * 0.25
-            + scores["domain_similarity_score"] * 0.10
-            + scores["profile_compatibility_score"] * 0.15
-            + scores["knowledge_confidence_score"] * 0.15
+            scores["name_similarity_score"] * FusionConfig.NAME_SIMILARITY_WEIGHT
+            + scores["semantic_similarity_score"] * FusionConfig.SEMANTIC_SIMILARITY_WEIGHT
+            + scores["domain_similarity_score"] * FusionConfig.DOMAIN_SIMILARITY_WEIGHT
+            + scores["profile_compatibility_score"] * FusionConfig.PROFILE_COMPATIBILITY_WEIGHT
+            + scores["knowledge_confidence_score"] * FusionConfig.KNOWLEDGE_CONFIDENCE_WEIGHT
         )
 
         return round(min(score, 100.0), 4)
 
-    def _link_type(self, score: float) -> str:
-        if score >= self.STRONG_LINK_THRESHOLD:
+    def _match_strategy(self, scores: dict) -> str:
+        if scores["direct_reference_score"] == FusionConfig.DIRECT_REFERENCE_SCORE:
+            return "DIRECT_REFERENCE"
+
+        strongest = max(
+            {
+                "NAME_SIMILARITY": scores["name_similarity_score"],
+                "SEMANTIC_MATCH": scores["semantic_similarity_score"],
+                "DOMAIN_MATCH": scores["domain_similarity_score"],
+                "PROFILE_COMPATIBILITY": scores["profile_compatibility_score"],
+            },
+            key=lambda key: {
+                "NAME_SIMILARITY": scores["name_similarity_score"],
+                "SEMANTIC_MATCH": scores["semantic_similarity_score"],
+                "DOMAIN_MATCH": scores["domain_similarity_score"],
+                "PROFILE_COMPATIBILITY": scores["profile_compatibility_score"],
+            }[key],
+        )
+
+        return strongest
+
+    def _resolution_status(self, score: float) -> str:
+        if score >= FusionConfig.RESOLVED_THRESHOLD:
+            return "RESOLVED"
+
+        if score >= FusionConfig.POSSIBLE_MATCH_THRESHOLD:
+            return "POSSIBLE_MATCH"
+
+        return "REJECTED"
+
+    def _link_type(self, resolution_status: str) -> str:
+        if resolution_status == "RESOLVED":
             return "RESOLVED_DATA_ASSET_LINK"
 
         return "POSSIBLE_DATA_ASSET_LINK"
