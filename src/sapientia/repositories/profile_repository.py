@@ -7,6 +7,8 @@ Persists generic profiling results into ekr_profile tables.
 
 import json
 from sqlalchemy import text
+
+from sapientia.config.profiling_config import ProfilingConfig
 from sapientia.models.profile import DatasetProfile
 
 
@@ -17,7 +19,7 @@ class ProfileRepository:
     def refresh_profile(self, dataset_id: int, profile: DatasetProfile) -> None:
         self._delete_existing_profiles(dataset_id)
         self._insert_dataset_profile(dataset_id, profile)
-        self._insert_sample_data(dataset_id, profile)
+        self._insert_dataset_samples(dataset_id, profile)
         self._insert_column_profiles(dataset_id, profile)
 
     def _delete_existing_profiles(self, dataset_id: int) -> None:
@@ -40,12 +42,18 @@ class ProfileRepository:
             )
 
         self.connection.execute(
-            text("DELETE FROM ekr_profile.dataset_profile WHERE dataset_id = :dataset_id"),
+            text("""
+                DELETE FROM ekr_profile.dataset_profile
+                WHERE dataset_id = :dataset_id
+            """),
             {"dataset_id": dataset_id},
         )
 
         self.connection.execute(
-            text("DELETE FROM ekr_profile.sample_data WHERE dataset_id = :dataset_id"),
+            text("""
+                DELETE FROM ekr_profile.dataset_sample
+                WHERE dataset_id = :dataset_id
+            """),
             {"dataset_id": dataset_id},
         )
 
@@ -78,28 +86,37 @@ class ProfileRepository:
             },
         )
 
-    def _insert_sample_data(self, dataset_id: int, profile: DatasetProfile) -> None:
+    def _insert_dataset_samples(self, dataset_id: int, profile: DatasetProfile) -> None:
+        if not ProfilingConfig.STORE_SAMPLE_DATA:
+            return
+
         if not profile.sample_rows:
             return
 
-        self.connection.execute(
-            text("""
-                INSERT INTO ekr_profile.sample_data
-                (
-                    dataset_id,
-                    sample_json
-                )
-                VALUES
-                (
-                    :dataset_id,
-                    CAST(:sample_json AS JSONB)
-                )
-            """),
-            {
-                "dataset_id": dataset_id,
-                "sample_json": json.dumps(profile.sample_rows, default=str, allow_nan=False),
-            },
-        )
+        sample_rows = profile.sample_rows[:ProfilingConfig.STORED_SAMPLE_ROWS]
+
+        for sample_number, sample_row in enumerate(sample_rows, start=1):
+            self.connection.execute(
+                text("""
+                    INSERT INTO ekr_profile.dataset_sample
+                    (
+                        dataset_id,
+                        sample_number,
+                        sample_json
+                    )
+                    VALUES
+                    (
+                        :dataset_id,
+                        :sample_number,
+                        CAST(:sample_json AS JSONB)
+                    )
+                """),
+                {
+                    "dataset_id": dataset_id,
+                    "sample_number": sample_number,
+                    "sample_json": json.dumps(sample_row, default=str, allow_nan=False),
+                },
+            )
 
     def _insert_column_profiles(self, dataset_id: int, profile: DatasetProfile) -> None:
         column_map = self._get_column_id_map(dataset_id)

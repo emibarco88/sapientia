@@ -9,14 +9,16 @@ Configuration for the Profiling Engine.
 class ProfilingConfig:
 
     # -------------------------------------------------------------
-    # Sampling
+    # Sampling for profiling calculations
     # -------------------------------------------------------------
 
     SAMPLE_SIZE = 10000
 
     SAMPLE_STRATEGY = "FIRST"
 
-    # Future options
+    ENABLE_FULL_SCAN = False
+
+        # Future options
     #
     # FIRST
     # RANDOM
@@ -24,13 +26,17 @@ class ProfilingConfig:
     # SYSTEMATIC
     # RESERVOIR
 
-    ENABLE_FULL_SCAN = False
+    # -------------------------------------------------------------
+    # Stored sample records
+    # -------------------------------------------------------------
+
+    STORE_SAMPLE_DATA = True
+
+    STORED_SAMPLE_ROWS = 100
 
     # -------------------------------------------------------------
     # Statistics
     # -------------------------------------------------------------
-
-    STORE_SAMPLE_DATA = True
 
     STORE_TOP_VALUES = True
 

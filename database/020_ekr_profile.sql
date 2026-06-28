@@ -168,41 +168,47 @@ COMMENT ON COLUMN ekr_profile.column_profile.profiled_at IS
 
 
 
-CREATE TABLE IF NOT EXISTS ekr_profile.sample_data
+CREATE TABLE IF NOT EXISTS ekr_profile.dataset_sample
 (
-    sample_data_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    dataset_id     BIGINT NOT NULL,
-    sample_json    JSONB NOT NULL,
-    created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    dataset_sample_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    dataset_id        BIGINT NOT NULL,
+    sample_number     INTEGER NOT NULL,
+    sample_json       JSONB NOT NULL,
+    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT fk_sample_data_dataset
+    CONSTRAINT fk_dataset_sample_dataset
         FOREIGN KEY (dataset_id)
         REFERENCES ekr_core.dataset(dataset_id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT uq_dataset_sample_number
+        UNIQUE (dataset_id, sample_number)
 );
 
-COMMENT ON TABLE ekr_profile.sample_data IS
-'Stores representative sample records extracted during profiling. Sample data assists users in understanding dataset contents without querying the original source system.';
+COMMENT ON TABLE ekr_profile.dataset_sample IS
+'Stores representative sample records extracted during profiling. Each row represents one sampled record from a dataset.';
 
-COMMENT ON COLUMN ekr_profile.sample_data.sample_data_id IS
-'Unique identifier of the stored sample data record.';
+COMMENT ON COLUMN ekr_profile.dataset_sample.dataset_sample_id IS
+'Unique identifier of the dataset sample record.';
 
-COMMENT ON COLUMN ekr_profile.sample_data.dataset_id IS
-'Reference to the dataset from which the sample records were extracted.';
+COMMENT ON COLUMN ekr_profile.dataset_sample.dataset_id IS
+'Reference to the dataset from which the sample record was extracted.';
 
-COMMENT ON COLUMN ekr_profile.sample_data.sample_json IS
-'JSON document containing representative sample records captured during profiling.';
+COMMENT ON COLUMN ekr_profile.dataset_sample.sample_number IS
+'Sequential number assigned to the sampled record within the dataset.';
 
-COMMENT ON COLUMN ekr_profile.sample_data.created_at IS
-'Timestamp indicating when the sample data was stored.';
+COMMENT ON COLUMN ekr_profile.dataset_sample.sample_json IS
+'JSON document containing one representative sampled record.';
+
+COMMENT ON COLUMN ekr_profile.dataset_sample.created_at IS
+'Timestamp indicating when the sample record was stored.';
 
 
 
-CREATE INDEX IF NOT EXISTS idx_dataset_profile_dataset
-ON ekr_profile.dataset_profile(dataset_id);
+
+CREATE INDEX IF NOT EXISTS idx_dataset_sample_dataset
+ON ekr_profile.dataset_sample(dataset_id);
 
 CREATE INDEX IF NOT EXISTS idx_column_profile_column
 ON ekr_profile.column_profile(column_id);
 
-CREATE INDEX IF NOT EXISTS idx_sample_data_dataset
-ON ekr_profile.sample_data(dataset_id);

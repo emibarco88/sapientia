@@ -32,7 +32,7 @@ class GenericProfiler:
             column_count=len(column_names),
             duplicate_rows=self._count_duplicate_rows(safe_records),
             column_profiles=column_profiles,
-            sample_rows=safe_records[:10],
+            sample_rows=safe_records,
             profile_json={
                 "profiler": "GenericProfiler",
                 "engine": "pure_python",
