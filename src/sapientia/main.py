@@ -2,19 +2,22 @@
 Module: main.py
 
 Purpose:
-Application entry point used to execute and test Sapientia workflows.
+Sapientia command-line entry point.
 """
 
 import argparse
 
-from sapientia.services.metadata_service import MetadataService
-from sapientia.services.semantic_service import SemanticService
+from sapientia.cli.ingest_cli import run_ingest
+from sapientia.cli.semantic_cli import run_semantic
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Sapientia CLI")
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+    )
 
     ingest_parser = subparsers.add_parser(
         "ingest",
@@ -40,42 +43,18 @@ def main():
     )
     semantic_parser.add_argument("--dataset-id", type=int, required=True)
 
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.command == "ingest":
-        metadata_service = MetadataService()
-
-        if args.source_type == "csv":
-            result = metadata_service.ingest_csv(
-                project_id=args.project_id,
-                file_path=args.file_path,
-            )
-
-            dataset_id = result["dataset_id"]
-
-        elif args.source_type == "json":
-            result = metadata_service.ingest_json(
-                project_id=args.project_id,
-                file_path=args.file_path,
-            )
-
-            dataset_id = result["parent_dataset_id"]
-
-        else:
-            raise ValueError(f"Unsupported source type: {args.source_type}")
-
-        if args.run_semantic:
-            semantic_service = SemanticService()
-            semantic_result = semantic_service.analyse_dataset(dataset_id)
-
-            result["semantic"] = semantic_result
+        result = run_ingest(args)
 
     elif args.command == "semantic":
-        semantic_service = SemanticService()
-
-        result = semantic_service.analyse_dataset(
-            dataset_id=args.dataset_id,
-        )
+        result = run_semantic(args)
 
     else:
         raise ValueError(f"Unsupported command: {args.command}")
