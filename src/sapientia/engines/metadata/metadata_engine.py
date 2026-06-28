@@ -3,7 +3,7 @@ Module: metadata_engine.py
 
 Purpose:
 Coordinates metadata ingestion from connectors into EKR Core and
-triggers profiling through the Profiling Engine.
+optionally triggers profiling through the Profiling Engine.
 """
 
 from sapientia.db.connection import get_engine
@@ -24,15 +24,22 @@ class MetadataEngine:
     def __init__(self):
         self.profiling_engine = ProfilingEngine()
 
-    def ingest_csv(self, project_id: int, file_path: str) -> dict:
+    def ingest_csv(
+        self,
+        project_id: int,
+        file_path: str,
+        run_profiling: bool = True,
+    ) -> dict:
         connector = CSVConnector()
 
         dataset_metadata = connector.extract_schema(file_path)
+        profile_records = []
 
-        profile_records = connector.extract_records(
-            source=file_path,
-            limit=ProfilingConfig.SAMPLE_SIZE,
-        )
+        if run_profiling:
+            profile_records = connector.extract_records(
+                source=file_path,
+                limit=ProfilingConfig.SAMPLE_SIZE,
+            )
 
         engine = get_engine()
 
@@ -63,37 +70,47 @@ class MetadataEngine:
                 columns=dataset_metadata.columns,
             )
 
-            self.profiling_engine.profile_dataset(
-                dataset_id=dataset_id,
-                records=profile_records,
-                connection=connection,
-            )
+            if run_profiling:
+                self.profiling_engine.profile_dataset(
+                    dataset_id=dataset_id,
+                    records=profile_records,
+                    connection=connection,
+                )
 
         return {
             "source_system_id": source_system_id,
             "dataset_id": dataset_id,
             "columns_refreshed": len(dataset_metadata.columns),
             "profiled_records": len(profile_records),
-            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE,
-            "profiled": True,
+            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE if run_profiling else 0,
+            "profiled": run_profiling,
         }
 
-    def ingest_json(self, project_id: int, file_path: str) -> dict:
+    def ingest_json(
+        self,
+        project_id: int,
+        file_path: str,
+        run_profiling: bool = True,
+    ) -> dict:
         connector = JSONConnector()
 
         dataset_metadata = connector.extract_schema(file_path)
 
-        profile_dataset_metadata = connector.engine.extract(
-            file_path=file_path,
-            include_records=True,
-        )
+        profile_records = []
+        profile_child_records = {}
 
-        profile_records = profile_dataset_metadata.records
+        if run_profiling:
+            profile_dataset_metadata = connector.engine.extract(
+                file_path=file_path,
+                include_records=True,
+            )
 
-        profile_child_records = {
-            child.name: child.records
-            for child in profile_dataset_metadata.child_datasets
-        }
+            profile_records = profile_dataset_metadata.records
+
+            profile_child_records = {
+                child.name: child.records
+                for child in profile_dataset_metadata.child_datasets
+            }
 
         engine = get_engine()
 
@@ -125,11 +142,12 @@ class MetadataEngine:
                 columns=dataset_metadata.columns,
             )
 
-            self.profiling_engine.profile_dataset(
-                dataset_id=parent_dataset_id,
-                records=profile_records,
-                connection=connection,
-            )
+            if run_profiling:
+                self.profiling_engine.profile_dataset(
+                    dataset_id=parent_dataset_id,
+                    records=profile_records,
+                    connection=connection,
+                )
 
             relationship_repo.delete_by_parent_dataset(parent_dataset_id)
 
@@ -151,13 +169,14 @@ class MetadataEngine:
                     columns=child_dataset.columns,
                 )
 
-                child_records = profile_child_records.get(child_dataset.name, [])
+                if run_profiling:
+                    child_records = profile_child_records.get(child_dataset.name, [])
 
-                self.profiling_engine.profile_dataset(
-                    dataset_id=child_dataset_id,
-                    records=child_records,
-                    connection=connection,
-                )
+                    self.profiling_engine.profile_dataset(
+                        dataset_id=child_dataset_id,
+                        records=child_records,
+                        connection=connection,
+                    )
 
                 child_dataset_ids[child_dataset.name] = child_dataset_id
 
@@ -180,6 +199,6 @@ class MetadataEngine:
             "relationships_created": len(dataset_metadata.relationships),
             "parent_columns_refreshed": len(dataset_metadata.columns),
             "profiled_records": len(profile_records),
-            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE,
-            "profiled": True,
+            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE if run_profiling else 0,
+            "profiled": run_profiling,
         }

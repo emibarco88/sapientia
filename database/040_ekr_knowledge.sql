@@ -224,3 +224,17 @@ WHERE resolution_status = 'AMBIGUOUS';
 
 COMMENT ON TABLE ekr_knowledge.knowledge_asset_link IS
 'Stores explainable links between acquired knowledge and technical data assets created by the Knowledge Fusion Engine.';
+
+
+
+COMMENT ON VIEW ekr_knowledge.vw_fusion_links IS
+'Provides a complete view of all Knowledge Fusion Engine links between knowledge items and EKR data assets, including semantic metadata, resolution status, confidence score and structured reasoning.';
+
+COMMENT ON VIEW ekr_knowledge.vw_fusion_resolved_links IS
+'Shows only high-confidence links that the Knowledge Fusion Engine resolved as trusted matches between knowledge items and data assets. These are suitable for automated downstream use.';
+
+COMMENT ON VIEW ekr_knowledge.vw_fusion_possible_links IS
+'Shows medium-confidence links that may represent valid matches but require review or additional evidence before being treated as trusted enterprise knowledge.';
+
+COMMENT ON VIEW ekr_knowledge.vw_fusion_ambiguous_links IS
+'Shows links where the Knowledge Fusion Engine identified uncertainty or ambiguity. These records should be reviewed by a human or future AI validation process.';

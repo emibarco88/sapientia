@@ -12,10 +12,13 @@ from sapientia.services.semantic_service import SemanticService
 def run_ingest(args) -> dict:
     metadata_service = MetadataService()
 
+    run_profiling = not args.skip_profiling
+
     if args.source_type == "csv":
         result = metadata_service.ingest_csv(
             project_id=args.project_id,
             file_path=args.file_path,
+            run_profiling=run_profiling,
         )
 
         dataset_id = result["dataset_id"]
@@ -24,6 +27,7 @@ def run_ingest(args) -> dict:
         result = metadata_service.ingest_json(
             project_id=args.project_id,
             file_path=args.file_path,
+            run_profiling=run_profiling,
         )
 
         dataset_id = result["parent_dataset_id"]
