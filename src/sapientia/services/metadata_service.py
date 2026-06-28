@@ -19,7 +19,7 @@ from sapientia.repositories.dataset_repository import DatasetRepository
 from sapientia.repositories.column_repository import ColumnRepository
 from sapientia.repositories.profile_repository import ProfileRepository
 
-from sapientia.profiling.generic_profiler import GenericProfiler
+from sapientia.engines.profiling.generic_profiler import GenericProfiler
 
 
 class MetadataService:
