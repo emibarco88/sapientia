@@ -10,6 +10,7 @@ import argparse
 from sapientia.cli.ingest_cli import run_ingest
 from sapientia.cli.semantic_cli import run_semantic
 from sapientia.cli.knowledge_cli import run_knowledge
+from sapientia.cli.fusion_cli import run_fusion
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     knowledge_parser.add_argument("--project-id", type=int, required=True)
     knowledge_parser.add_argument("--file-path", type=str, required=True)
 
+    fusion_parser = subparsers.add_parser(
+        "fusion",
+        help="Fuse enterprise knowledge with EKR data assets",
+    )
+    fusion_parser.add_argument("--project-id", type=int, required=True)
+
     return parser
 
 
@@ -66,6 +73,9 @@ def main() -> None:
 
     elif args.command == "knowledge":
         result = run_knowledge(args)
+
+    elif args.command == "fusion":
+        result = run_fusion(args)
 
     else:
         raise ValueError(f"Unsupported command: {args.command}")
