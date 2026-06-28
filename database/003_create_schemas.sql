@@ -9,3 +9,5 @@ CREATE SCHEMA IF NOT EXISTS ekr_execution;
 CREATE SCHEMA IF NOT EXISTS ekr_semantic;
 
 CREATE SCHEMA IF NOT EXISTS ekr_knowledge;
+
+CREATE SCHEMA IF NOT EXISTS ekr_runtime;
