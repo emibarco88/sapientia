@@ -9,6 +9,7 @@ import argparse
 
 from sapientia.cli.ingest_cli import run_ingest
 from sapientia.cli.semantic_cli import run_semantic
+from sapientia.cli.knowledge_cli import run_knowledge
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     semantic_parser.add_argument("--dataset-id", type=int, required=True)
 
+    knowledge_parser = subparsers.add_parser(
+        "knowledge",
+        help="Acquire enterprise knowledge from a local document",
+    )
+    knowledge_parser.add_argument("--project-id", type=int, required=True)
+    knowledge_parser.add_argument("--file-path", type=str, required=True)
+
     return parser
 
 
@@ -55,6 +63,9 @@ def main() -> None:
 
     elif args.command == "semantic":
         result = run_semantic(args)
+
+    elif args.command == "knowledge":
+        result = run_knowledge(args)
 
     else:
         raise ValueError(f"Unsupported command: {args.command}")
