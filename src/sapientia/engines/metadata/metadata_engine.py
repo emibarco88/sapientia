@@ -7,15 +7,17 @@ optionally triggers profiling through the Profiling Engine.
 """
 
 from sapientia.db.connection import get_engine
+
 from sapientia.config.profiling_config import ProfilingConfig
+from sapientia.services.runtime_config_service import RuntimeConfigService
 
 from sapientia.connectors.csv.csv_connector import CSVConnector
 from sapientia.connectors.json.json_connector import JSONConnector
 
-from sapientia.repositories.source_system_repository import SourceSystemRepository
-from sapientia.repositories.dataset_repository import DatasetRepository
-from sapientia.repositories.column_repository import ColumnRepository
-from sapientia.repositories.relationship_repository import RelationshipRepository
+from sapientia.repositories.core.source_system_repository import SourceSystemRepository
+from sapientia.repositories.core.dataset_repository import DatasetRepository
+from sapientia.repositories.core.column_repository import ColumnRepository
+from sapientia.repositories.core.relationship_repository import RelationshipRepository
 
 from sapientia.engines.profiling.profiling_engine import ProfilingEngine
 
@@ -23,6 +25,11 @@ from sapientia.engines.profiling.profiling_engine import ProfilingEngine
 class MetadataEngine:
     def __init__(self):
         self.profiling_engine = ProfilingEngine()
+
+        self.profiling_config = RuntimeConfigService().get_config(
+            component_code=ProfilingConfig.COMPONENT_CODE,
+            defaults=ProfilingConfig.DEFAULTS,
+        )
 
     def ingest_csv(
         self,
@@ -38,7 +45,7 @@ class MetadataEngine:
         if run_profiling:
             profile_records = connector.extract_records(
                 source=file_path,
-                limit=ProfilingConfig.SAMPLE_SIZE,
+                limit=self.profiling_config["SAMPLE_SIZE"],
             )
 
         engine = get_engine()
@@ -82,7 +89,7 @@ class MetadataEngine:
             "dataset_id": dataset_id,
             "columns_refreshed": len(dataset_metadata.columns),
             "profiled_records": len(profile_records),
-            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE if run_profiling else 0,
+            "profile_record_limit": self.profiling_config["SAMPLE_SIZE"] if run_profiling else 0,
             "profiled": run_profiling,
         }
 
@@ -199,6 +206,6 @@ class MetadataEngine:
             "relationships_created": len(dataset_metadata.relationships),
             "parent_columns_refreshed": len(dataset_metadata.columns),
             "profiled_records": len(profile_records),
-            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE if run_profiling else 0,
+            "profile_record_limit": self.profiling_config["SAMPLE_SIZE"] if run_profiling else 0,
             "profiled": run_profiling,
         }

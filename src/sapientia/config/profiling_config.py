@@ -2,48 +2,33 @@
 Module: profiling_config.py
 
 Purpose:
-Configuration for the Profiling Engine.
+Default fallback configuration for the Profiling Engine.
+
+Runtime values should be read from ekr_runtime.runtime_configuration
+through RuntimeConfigService. These values remain as safe defaults.
 """
 
 
 class ProfilingConfig:
 
-    # -------------------------------------------------------------
-    # Sampling for profiling calculations
-    # -------------------------------------------------------------
+    COMPONENT_CODE = "PROFILING"
 
-    SAMPLE_SIZE = 10000
+    DEFAULTS = {
+        "SAMPLE_SIZE": 10000,
+        "STORED_SAMPLE_ROWS": 100,
+    }
+
+    SAMPLE_SIZE = DEFAULTS["SAMPLE_SIZE"]
+    STORED_SAMPLE_ROWS = DEFAULTS["STORED_SAMPLE_ROWS"]
 
     SAMPLE_STRATEGY = "FIRST"
-
     ENABLE_FULL_SCAN = False
 
-        # Future options
-    #
-    # FIRST
-    # RANDOM
-    # STRATIFIED
-    # SYSTEMATIC
-    # RESERVOIR
-
-    # -------------------------------------------------------------
-    # Stored sample records
-    # -------------------------------------------------------------
-
     STORE_SAMPLE_DATA = True
-
-    STORED_SAMPLE_ROWS = 100
-
-    # -------------------------------------------------------------
-    # Statistics
-    # -------------------------------------------------------------
-
     STORE_TOP_VALUES = True
 
     MAX_TOP_VALUES = 20
-
     MAX_SAMPLE_VALUES = 10
 
     DETECT_PATTERNS = True
-
     DETECT_ANOMALIES = True

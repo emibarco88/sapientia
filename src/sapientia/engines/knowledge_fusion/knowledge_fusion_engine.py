@@ -7,7 +7,7 @@ trusted enterprise asset links.
 """
 
 from sapientia.db.connection import get_engine
-from sapientia.repositories.knowledge_fusion_repository import KnowledgeFusionRepository
+from sapientia.repositories.queries.knowledge_fusion_repository import KnowledgeFusionRepository
 from sapientia.engines.knowledge_fusion.candidate_generator import CandidateGenerator
 from sapientia.engines.knowledge_fusion.link_scorer import LinkScorer
 

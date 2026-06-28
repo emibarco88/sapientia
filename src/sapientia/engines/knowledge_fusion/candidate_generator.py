@@ -9,9 +9,16 @@ import re
 from difflib import SequenceMatcher
 
 from sapientia.config.fusion_config import FusionConfig
+from sapientia.services.runtime_config_service import RuntimeConfigService
 
 
 class CandidateGenerator:
+    def __init__(self):
+        self.config = RuntimeConfigService().get_config(
+            component_code=FusionConfig.COMPONENT_CODE,
+            defaults=FusionConfig.DEFAULTS,
+        )
+
     def generate_candidates(
         self,
         knowledge_items: list[dict],
@@ -41,7 +48,7 @@ class CandidateGenerator:
             )
 
             candidates.extend(
-                scored_assets[:FusionConfig.MAX_CANDIDATES_PER_KNOWLEDGE_ITEM]
+                scored_assets[: self.config["MAX_CANDIDATES_PER_KNOWLEDGE_ITEM"]]
             )
 
         return candidates
@@ -60,14 +67,13 @@ class CandidateGenerator:
 
         direct_reference = self._direct_reference_score(knowledge, asset)
 
-        if direct_reference == 100.0:
-            return 100.0
+        if direct_reference == self.config["DIRECT_REFERENCE_SCORE"]:
+            return self.config["DIRECT_REFERENCE_SCORE"]
 
         knowledge_tokens = set(knowledge_text.split("_"))
         asset_tokens = set(asset_text.split("_"))
 
         token_overlap = len(knowledge_tokens.intersection(asset_tokens))
-
         similarity = SequenceMatcher(None, knowledge_text, asset_text).ratio() * 100
 
         if token_overlap == 0 and similarity < 35:
@@ -84,10 +90,10 @@ class CandidateGenerator:
         column_name = self.normalise(asset.get("column_name"))
 
         if dataset_name and column_name and f"{dataset_name}_{column_name}" in text:
-            return 100.0
+            return self.config["DIRECT_REFERENCE_SCORE"]
 
         if column_name and column_name in text:
-            return 100.0
+            return self.config["DIRECT_REFERENCE_SCORE"]
 
         return 0.0
 

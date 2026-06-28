@@ -9,7 +9,7 @@ into the Enterprise Knowledge Repository.
 from sapientia.db.connection import get_engine
 from sapientia.engines.knowledge_acquisition.connectors.text_connector import TextKnowledgeConnector
 from sapientia.engines.knowledge_acquisition.extractors.simple_knowledge_extractor import SimpleKnowledgeExtractor
-from sapientia.repositories.knowledge_repository import KnowledgeRepository
+from sapientia.repositories.knowledge.knowledge_repository import KnowledgeRepository
 
 
 class KnowledgeAcquisitionEngine:

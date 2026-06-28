@@ -1,14 +1,15 @@
 """
-Module: profiling_repository.py
+Module: dataset_context_repository.py
 
 Purpose:
-Reads dataset information required by the Profiling Engine.
+Reads dataset context required by engines that need source location,
+source type and dataset metadata before execution.
 """
 
 from sqlalchemy import text
 
 
-class ProfilingRepository:
+class DatasetContextRepository:
     def __init__(self, connection):
         self.connection = connection
 

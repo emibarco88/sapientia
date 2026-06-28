@@ -7,7 +7,7 @@ then persists semantic understanding into EKR Semantic.
 """
 
 from sapientia.db.connection import get_engine
-from sapientia.repositories.semantic_repository import SemanticRepository
+from sapientia.repositories.queries.semantic_repository import SemanticRepository
 from sapientia.engines.semantic.semantic_analyzer import SemanticAnalyzer
 
 

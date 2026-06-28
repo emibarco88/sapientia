@@ -7,16 +7,23 @@ Coordinates profiling execution and persistence into EKR Profile.
 
 from sapientia.db.connection import get_engine
 from sapientia.config.profiling_config import ProfilingConfig
+from sapientia.services.runtime_config_service import RuntimeConfigService
 
 from sapientia.connectors.csv.csv_connector import CSVConnector
 from sapientia.connectors.json.json_connector import JSONConnector
 
 from sapientia.engines.profiling.generic_profiler import GenericProfiler
-from sapientia.repositories.profile_repository import ProfileRepository
-from sapientia.repositories.profiling_repository import ProfilingRepository
+from sapientia.repositories.profile.profile_repository import ProfileRepository
+from sapientia.repositories.queries.dataset_context_repository import DatasetContextRepository
 
 
 class ProfilingEngine:
+    def __init__(self):
+        self.config = RuntimeConfigService().get_config(
+            component_code=ProfilingConfig.COMPONENT_CODE,
+            defaults=ProfilingConfig.DEFAULTS,
+        )
+
     def profile_dataset(
         self,
         dataset_id: int,
@@ -36,7 +43,7 @@ class ProfilingEngine:
         engine = get_engine()
 
         with engine.begin() as connection:
-            repository = ProfilingRepository(connection)
+            repository = DatasetContextRepository(connection)
             context = repository.get_dataset_context(dataset_id)
 
             if not context:
@@ -55,7 +62,7 @@ class ProfilingEngine:
             "source_type": context["source_type"],
             "dataset_name": context["dataset_name"],
             "profiled_records": len(records),
-            "profile_record_limit": ProfilingConfig.SAMPLE_SIZE,
+            "profile_record_limit": self.config["SAMPLE_SIZE"],
             "profiled": True,
         }
 
@@ -67,7 +74,7 @@ class ProfilingEngine:
             connector = CSVConnector()
             return connector.extract_records(
                 source=location,
-                limit=ProfilingConfig.SAMPLE_SIZE,
+                limit=self.config["SAMPLE_SIZE"],
             )
 
         if source_type == "JSON":
@@ -79,7 +86,6 @@ class ProfilingEngine:
         connector = JSONConnector()
         location = context["location"]
 
-        # Child JSON datasets are stored as: file_path#child_dataset_name
         if "#" in location:
             file_path, child_name = location.split("#", 1)
 
@@ -90,13 +96,11 @@ class ProfilingEngine:
 
             for child in dataset_metadata.child_datasets:
                 if child.name == child_name:
-                    return child.records[:ProfilingConfig.SAMPLE_SIZE]
+                    return child.records[: self.config["SAMPLE_SIZE"]]
 
             return []
 
-        records = connector.extract_records(
+        return connector.extract_records(
             source=location,
-            limit=ProfilingConfig.SAMPLE_SIZE,
+            limit=self.config["SAMPLE_SIZE"],
         )
-
-        return records

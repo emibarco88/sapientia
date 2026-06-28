@@ -6,7 +6,7 @@ Provides a reusable execution tracking wrapper for Sapientia runtime components.
 """
 
 from sapientia.db.connection import get_engine
-from sapientia.repositories.runtime_repository import RuntimeRepository
+from sapientia.repositories.runtime.runtime_repository import RuntimeRepository
 
 
 class RuntimeExecutionService:

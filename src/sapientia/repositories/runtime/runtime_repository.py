@@ -3,6 +3,7 @@ Module: runtime_repository.py
 
 Purpose:
 Persists runtime execution history, logs and component registry lookups.
+Also reads runtime configuration values from ekr_runtime.
 """
 
 import json
@@ -28,6 +29,31 @@ class RuntimeRepository:
             raise ValueError(f"Runtime component not registered or inactive: {component_code}")
 
         return row.runtime_component_id
+
+    def get_component_configuration(self, component_code: str) -> dict:
+        rows = self.connection.execute(
+            text("""
+                SELECT
+                    rc.parameter_name,
+                    rc.parameter_value,
+                    rc.parameter_type
+                FROM ekr_runtime.runtime_configuration rc
+                JOIN ekr_runtime.runtime_component comp
+                    ON comp.runtime_component_id = rc.runtime_component_id
+                WHERE comp.component_code = :component_code
+                  AND comp.is_active = TRUE
+                  AND rc.is_active = TRUE
+            """),
+            {"component_code": component_code},
+        ).fetchall()
+
+        return {
+            row.parameter_name: self._cast_value(
+                value=row.parameter_value,
+                value_type=row.parameter_type,
+            )
+            for row in rows
+        }
 
     def start_execution(
         self,
@@ -141,3 +167,20 @@ class RuntimeRepository:
                 "log_json": json.dumps(log_json or {}, default=str, allow_nan=False),
             },
         )
+
+    def _cast_value(self, value: str, value_type: str):
+        value_type = str(value_type or "STRING").upper()
+
+        if value_type == "INTEGER":
+            return int(value)
+
+        if value_type in ["DECIMAL", "NUMERIC", "FLOAT"]:
+            return float(value)
+
+        if value_type == "BOOLEAN":
+            return str(value).lower() in ["true", "1", "yes", "y"]
+
+        if value_type == "JSON":
+            return json.loads(value)
+
+        return value

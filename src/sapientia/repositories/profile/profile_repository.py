@@ -10,11 +10,17 @@ from sqlalchemy import text
 
 from sapientia.config.profiling_config import ProfilingConfig
 from sapientia.models.profile import DatasetProfile
+from sapientia.services.runtime_config_service import RuntimeConfigService
 
 
 class ProfileRepository:
     def __init__(self, connection):
         self.connection = connection
+
+        self.config = RuntimeConfigService().get_config(
+            component_code=ProfilingConfig.COMPONENT_CODE,
+            defaults=ProfilingConfig.DEFAULTS,
+        )
 
     def refresh_profile(self, dataset_id: int, profile: DatasetProfile) -> None:
         self._delete_existing_profiles(dataset_id)
@@ -87,13 +93,16 @@ class ProfileRepository:
         )
 
     def _insert_dataset_samples(self, dataset_id: int, profile: DatasetProfile) -> None:
-        if not ProfilingConfig.STORE_SAMPLE_DATA:
+        store_sample_data = self.config.get("STORE_SAMPLE_DATA", True)
+
+        if not store_sample_data:
             return
 
         if not profile.sample_rows:
             return
 
-        sample_rows = profile.sample_rows[:ProfilingConfig.STORED_SAMPLE_ROWS]
+        stored_sample_rows = int(self.config.get("STORED_SAMPLE_ROWS", 100))
+        sample_rows = profile.sample_rows[:stored_sample_rows]
 
         for sample_number, sample_row in enumerate(sample_rows, start=1):
             self.connection.execute(

@@ -9,9 +9,15 @@ import re
 from difflib import SequenceMatcher
 
 from sapientia.config.fusion_config import FusionConfig
+from sapientia.services.runtime_config_service import RuntimeConfigService
 
 
 class LinkScorer:
+    def __init__(self):
+        self.config = RuntimeConfigService().get_config(
+            component_code=FusionConfig.COMPONENT_CODE,
+            defaults=FusionConfig.DEFAULTS,
+        )
 
     def score_candidate(self, candidate: dict) -> dict | None:
         knowledge = candidate["knowledge_item"]
@@ -30,7 +36,7 @@ class LinkScorer:
 
         final_score = self._weighted_score(scores)
 
-        if final_score < FusionConfig.POSSIBLE_MATCH_THRESHOLD:
+        if final_score < self.config["POSSIBLE_MATCH_THRESHOLD"]:
             return None
 
         match_strategy = self._match_strategy(scores)
@@ -51,11 +57,11 @@ class LinkScorer:
                 "match_strategy": match_strategy,
                 "resolution_status": resolution_status,
                 "weights": {
-                    "name_similarity": FusionConfig.NAME_SIMILARITY_WEIGHT,
-                    "semantic_similarity": FusionConfig.SEMANTIC_SIMILARITY_WEIGHT,
-                    "domain_similarity": FusionConfig.DOMAIN_SIMILARITY_WEIGHT,
-                    "profile_compatibility": FusionConfig.PROFILE_COMPATIBILITY_WEIGHT,
-                    "knowledge_confidence": FusionConfig.KNOWLEDGE_CONFIDENCE_WEIGHT,
+                    "name_similarity": self.config["NAME_SIMILARITY_WEIGHT"],
+                    "semantic_similarity": self.config["SEMANTIC_SIMILARITY_WEIGHT"],
+                    "domain_similarity": self.config["DOMAIN_SIMILARITY_WEIGHT"],
+                    "profile_compatibility": self.config["PROFILE_COMPATIBILITY_WEIGHT"],
+                    "knowledge_confidence": self.config["KNOWLEDGE_CONFIDENCE_WEIGHT"],
                 },
                 "knowledge_item": {
                     "name": knowledge.get("name"),
@@ -84,10 +90,10 @@ class LinkScorer:
         column_name = self._normalise(asset.get("column_name"))
 
         if dataset_name and column_name and f"{dataset_name}_{column_name}" in text:
-            return FusionConfig.DIRECT_REFERENCE_SCORE
+            return self.config["DIRECT_REFERENCE_SCORE"]
 
         if column_name and column_name in text:
-            return FusionConfig.DIRECT_REFERENCE_SCORE
+            return self.config["DIRECT_REFERENCE_SCORE"]
 
         return 0.0
 
@@ -163,24 +169,24 @@ class LinkScorer:
         return 50.0
 
     def _weighted_score(self, scores: dict) -> float:
-        if scores["direct_reference_score"] == FusionConfig.DIRECT_REFERENCE_SCORE:
-            return FusionConfig.DIRECT_REFERENCE_SCORE
+        if scores["direct_reference_score"] == self.config["DIRECT_REFERENCE_SCORE"]:
+            return self.config["DIRECT_REFERENCE_SCORE"]
 
         score = (
-            scores["name_similarity_score"] * FusionConfig.NAME_SIMILARITY_WEIGHT
-            + scores["semantic_similarity_score"] * FusionConfig.SEMANTIC_SIMILARITY_WEIGHT
-            + scores["domain_similarity_score"] * FusionConfig.DOMAIN_SIMILARITY_WEIGHT
-            + scores["profile_compatibility_score"] * FusionConfig.PROFILE_COMPATIBILITY_WEIGHT
-            + scores["knowledge_confidence_score"] * FusionConfig.KNOWLEDGE_CONFIDENCE_WEIGHT
+            scores["name_similarity_score"] * self.config["NAME_SIMILARITY_WEIGHT"]
+            + scores["semantic_similarity_score"] * self.config["SEMANTIC_SIMILARITY_WEIGHT"]
+            + scores["domain_similarity_score"] * self.config["DOMAIN_SIMILARITY_WEIGHT"]
+            + scores["profile_compatibility_score"] * self.config["PROFILE_COMPATIBILITY_WEIGHT"]
+            + scores["knowledge_confidence_score"] * self.config["KNOWLEDGE_CONFIDENCE_WEIGHT"]
         )
 
         return round(min(score, 100.0), 4)
 
     def _match_strategy(self, scores: dict) -> str:
-        if scores["direct_reference_score"] == FusionConfig.DIRECT_REFERENCE_SCORE:
+        if scores["direct_reference_score"] == self.config["DIRECT_REFERENCE_SCORE"]:
             return "DIRECT_REFERENCE"
 
-        strongest = max(
+        return max(
             {
                 "NAME_SIMILARITY": scores["name_similarity_score"],
                 "SEMANTIC_MATCH": scores["semantic_similarity_score"],
@@ -195,13 +201,11 @@ class LinkScorer:
             }[key],
         )
 
-        return strongest
-
     def _resolution_status(self, score: float) -> str:
-        if score >= FusionConfig.RESOLVED_THRESHOLD:
+        if score >= self.config["RESOLVED_THRESHOLD"]:
             return "RESOLVED"
 
-        if score >= FusionConfig.POSSIBLE_MATCH_THRESHOLD:
+        if score >= self.config["POSSIBLE_MATCH_THRESHOLD"]:
             return "POSSIBLE_MATCH"
 
         return "REJECTED"
