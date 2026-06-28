@@ -13,4 +13,6 @@ def run_fusion(args) -> dict:
 
     return service.fuse_project(
         project_id=args.project_id,
+        document_id=args.document_id,
+        dataset_id=args.dataset_id,
     )

@@ -13,7 +13,12 @@ from sapientia.engines.knowledge_fusion.link_scorer import LinkScorer
 
 
 class KnowledgeFusionEngine:
-    def fuse_project(self, project_id: int) -> dict:
+    def fuse_project(
+        self,
+        project_id: int,
+        document_id: int | None = None,
+        dataset_id: int | None = None,
+    ) -> dict:
         engine = get_engine()
         candidate_generator = CandidateGenerator()
         scorer = LinkScorer()
@@ -21,10 +26,21 @@ class KnowledgeFusionEngine:
         with engine.begin() as connection:
             repository = KnowledgeFusionRepository(connection)
 
-            knowledge_items = repository.get_knowledge_items(project_id)
-            data_assets = repository.get_data_assets(project_id)
+            knowledge_items = repository.get_knowledge_items(
+                project_id=project_id,
+                document_id=document_id,
+            )
 
-            repository.delete_existing_links(project_id)
+            data_assets = repository.get_data_assets(
+                project_id=project_id,
+                dataset_id=dataset_id,
+            )
+
+            repository.delete_existing_links(
+                project_id=project_id,
+                document_id=document_id,
+                dataset_id=dataset_id,
+            )
 
             candidates = candidate_generator.generate_candidates(
                 knowledge_items=knowledge_items,
@@ -46,6 +62,8 @@ class KnowledgeFusionEngine:
 
         return {
             "project_id": project_id,
+            "document_id": document_id,
+            "dataset_id": dataset_id,
             "knowledge_items": len(knowledge_items),
             "data_assets": len(data_assets),
             "candidate_links_evaluated": len(candidates),

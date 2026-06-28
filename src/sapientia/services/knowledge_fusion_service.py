@@ -12,5 +12,14 @@ class KnowledgeFusionService:
     def __init__(self):
         self.engine = KnowledgeFusionEngine()
 
-    def fuse_project(self, project_id: int) -> dict:
-        return self.engine.fuse_project(project_id)
+    def fuse_project(
+        self,
+        project_id: int,
+        document_id: int | None = None,
+        dataset_id: int | None = None,
+    ) -> dict:
+        return self.engine.fuse_project(
+            project_id=project_id,
+            document_id=document_id,
+            dataset_id=dataset_id,
+        )

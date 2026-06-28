@@ -69,6 +69,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fuse enterprise knowledge with EKR data assets",
     )
     fusion_parser.add_argument("--project-id", type=int, required=True)
+    fusion_parser.add_argument("--document-id", type=int, required=False)
+    fusion_parser.add_argument("--dataset-id", type=int, required=False)
 
     return parser
 
