@@ -1,36 +1,36 @@
 """
-Module: metadata_service.py
+Module: enterprise_asset_discovery_service.py
 
 Purpose:
-Service layer facade for metadata ingestion workflows.
+Service layer facade for Enterprise Asset Discovery workflows.
 """
 
-from sapientia.engines.metadata.metadata_engine import MetadataEngine
+from sapientia.engines.enterprise_asset_discovery.enterprise_asset_discovery_engine import EnterpriseAssetDiscoveryEngine
 
 
-class MetadataService:
+class EnterpriseAssetDiscoveryService:
     def __init__(self):
-        self.metadata_engine = MetadataEngine()
+        self.discovery_engine = EnterpriseAssetDiscoveryEngine()
 
-    def ingest_csv(
+    def discover_csv(
         self,
         project_id: int,
         file_path: str,
         run_profiling: bool = True,
     ) -> dict:
-        return self.metadata_engine.ingest_csv(
+        return self.discovery_engine.discover_csv(
             project_id=project_id,
             file_path=file_path,
             run_profiling=run_profiling,
         )
 
-    def ingest_json(
+    def discover_json(
         self,
         project_id: int,
         file_path: str,
         run_profiling: bool = True,
     ) -> dict:
-        return self.metadata_engine.ingest_json(
+        return self.discovery_engine.discover_json(
             project_id=project_id,
             file_path=file_path,
             run_profiling=run_profiling,

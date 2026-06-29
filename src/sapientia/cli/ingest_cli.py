@@ -2,20 +2,23 @@
 Module: ingest_cli.py
 
 Purpose:
-CLI handler for ingestion workflows.
+CLI handler for Enterprise Asset Discovery workflows.
+
+The CLI command remains `ingest` for backwards compatibility, but the
+underlying capability is Enterprise Asset Discovery.
 """
 
-from sapientia.services.metadata_service import MetadataService
+from sapientia.services.enterprise_asset_discovery_service import EnterpriseAssetDiscoveryService
 from sapientia.services.semantic_service import SemanticService
 
 
 def run_ingest(args) -> dict:
-    metadata_service = MetadataService()
+    discovery_service = EnterpriseAssetDiscoveryService()
 
     run_profiling = not args.skip_profiling
 
     if args.source_type == "csv":
-        result = metadata_service.ingest_csv(
+        result = discovery_service.discover_csv(
             project_id=args.project_id,
             file_path=args.file_path,
             run_profiling=run_profiling,
@@ -24,7 +27,7 @@ def run_ingest(args) -> dict:
         dataset_id = result["dataset_id"]
 
     elif args.source_type == "json":
-        result = metadata_service.ingest_json(
+        result = discovery_service.discover_json(
             project_id=args.project_id,
             file_path=args.file_path,
             run_profiling=run_profiling,

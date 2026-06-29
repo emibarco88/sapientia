@@ -1,14 +1,17 @@
 """
-Module: metadata_engine.py
+Module: enterprise_asset_discovery_engine.py
 
 Purpose:
-Coordinates metadata ingestion from connectors into EKR Core and
-optionally triggers profiling through the Profiling Engine.
+Discovers Enterprise Assets from source systems and persists their
+technical identity, metadata and source references into EKR Core.
+
+This engine does not replicate operational systems. It extracts the
+minimum information required to understand enterprise assets.
 """
 
 from sapientia.db.connection import get_engine
 
-from sapientia.config.profiling_config import ProfilingConfig
+from sapientia.config.enterprise_profiling_config import EnterpriseProfilingConfig
 from sapientia.services.runtime_config_service import RuntimeConfigService
 
 from sapientia.connectors.csv.csv_connector import CSVConnector
@@ -19,19 +22,19 @@ from sapientia.repositories.core.dataset_repository import DatasetRepository
 from sapientia.repositories.core.column_repository import ColumnRepository
 from sapientia.repositories.core.relationship_repository import RelationshipRepository
 
-from sapientia.engines.profiling.profiling_engine import ProfilingEngine
+from sapientia.engines.enterprise_profiling.enterprise_profiling_engine import EnterpriseProfilingEngine
 
 
-class MetadataEngine:
+class EnterpriseAssetDiscoveryEngine:
     def __init__(self):
-        self.profiling_engine = ProfilingEngine()
+        self.enterprise_profiling_engine = EnterpriseProfilingEngine()
 
         self.profiling_config = RuntimeConfigService().get_config(
-            component_code=ProfilingConfig.COMPONENT_CODE,
-            defaults=ProfilingConfig.DEFAULTS,
+            component_code=EnterpriseProfilingConfig.COMPONENT_CODE,
+            defaults=EnterpriseProfilingConfig.DEFAULTS,
         )
 
-    def ingest_csv(
+    def discover_csv(
         self,
         project_id: int,
         file_path: str,
@@ -59,7 +62,7 @@ class MetadataEngine:
                 project_id=project_id,
                 name=f"CSV Source - {dataset_metadata.name}",
                 source_type="CSV",
-                description="CSV file ingested by Sapientia Metadata Engine",
+                description="CSV file discovered by Sapientia Enterprise Asset Discovery Engine",
             )
 
             dataset_id = dataset_repo.create_or_update(
@@ -78,7 +81,7 @@ class MetadataEngine:
             )
 
             if run_profiling:
-                self.profiling_engine.profile_dataset(
+                self.enterprise_profiling_engine.profile_asset(
                     dataset_id=dataset_id,
                     records=profile_records,
                     connection=connection,
@@ -87,13 +90,14 @@ class MetadataEngine:
         return {
             "source_system_id": source_system_id,
             "dataset_id": dataset_id,
+            "enterprise_asset_type": "DATASET",
             "columns_refreshed": len(dataset_metadata.columns),
             "profiled_records": len(profile_records),
             "profile_record_limit": self.profiling_config["SAMPLE_SIZE"] if run_profiling else 0,
             "profiled": run_profiling,
         }
 
-    def ingest_json(
+    def discover_json(
         self,
         project_id: int,
         file_path: str,
@@ -131,7 +135,7 @@ class MetadataEngine:
                 project_id=project_id,
                 name=f"JSON Source - {dataset_metadata.name}",
                 source_type="JSON",
-                description="JSON file ingested by Sapientia Metadata Engine",
+                description="JSON file discovered by Sapientia Enterprise Asset Discovery Engine",
             )
 
             parent_dataset_id = dataset_repo.create_or_update(
@@ -150,7 +154,7 @@ class MetadataEngine:
             )
 
             if run_profiling:
-                self.profiling_engine.profile_dataset(
+                self.enterprise_profiling_engine.profile_asset(
                     dataset_id=parent_dataset_id,
                     records=profile_records,
                     connection=connection,
@@ -179,7 +183,7 @@ class MetadataEngine:
                 if run_profiling:
                     child_records = profile_child_records.get(child_dataset.name, [])
 
-                    self.profiling_engine.profile_dataset(
+                    self.enterprise_profiling_engine.profile_asset(
                         dataset_id=child_dataset_id,
                         records=child_records,
                         connection=connection,
@@ -202,6 +206,7 @@ class MetadataEngine:
         return {
             "source_system_id": source_system_id,
             "parent_dataset_id": parent_dataset_id,
+            "enterprise_asset_type": "JSON_DATASET",
             "child_datasets_created_or_updated": len(dataset_metadata.child_datasets),
             "relationships_created": len(dataset_metadata.relationships),
             "parent_columns_refreshed": len(dataset_metadata.columns),

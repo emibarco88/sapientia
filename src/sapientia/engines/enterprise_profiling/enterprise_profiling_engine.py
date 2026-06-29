@@ -1,30 +1,30 @@
 """
-Module: profiling_engine.py
+Module: enterprise_profiling_engine.py
 
 Purpose:
 Coordinates profiling execution and persistence into EKR Profile.
 """
 
 from sapientia.db.connection import get_engine
-from sapientia.config.profiling_config import ProfilingConfig
+from sapientia.config.enterprise_profiling_config import EnterpriseProfilingConfig
 from sapientia.services.runtime_config_service import RuntimeConfigService
 
 from sapientia.connectors.csv.csv_connector import CSVConnector
 from sapientia.connectors.json.json_connector import JSONConnector
 
-from sapientia.engines.profiling.generic_profiler import GenericProfiler
+from sapientia.engines.enterprise_profiling.generic_profiler import GenericProfiler
 from sapientia.repositories.profile.profile_repository import ProfileRepository
 from sapientia.repositories.queries.dataset_context_repository import DatasetContextRepository
 
 
-class ProfilingEngine:
+class EnterpriseProfilingEngine:
     def __init__(self):
         self.config = RuntimeConfigService().get_config(
-            component_code=ProfilingConfig.COMPONENT_CODE,
-            defaults=ProfilingConfig.DEFAULTS,
+            component_code=EnterpriseProfilingConfig.COMPONENT_CODE,
+            defaults=EnterpriseProfilingConfig.DEFAULTS,
         )
 
-    def profile_dataset(
+    def profile_asset(
         self,
         dataset_id: int,
         records: list[dict],
@@ -39,7 +39,7 @@ class ProfilingEngine:
         profile_repo = ProfileRepository(connection)
         profile_repo.refresh_profile(dataset_id, profile)
 
-    def profile_dataset_by_id(self, dataset_id: int) -> dict:
+    def profile_asset_by_id(self, dataset_id: int) -> dict:
         engine = get_engine()
 
         with engine.begin() as connection:
@@ -51,7 +51,7 @@ class ProfilingEngine:
 
             records = self._extract_records_for_context(context)
 
-            self.profile_dataset(
+            self.profile_asset(
                 dataset_id=dataset_id,
                 records=records,
                 connection=connection,

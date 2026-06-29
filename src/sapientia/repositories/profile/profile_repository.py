@@ -8,7 +8,7 @@ Persists generic profiling results into ekr_profile tables.
 import json
 from sqlalchemy import text
 
-from sapientia.config.profiling_config import ProfilingConfig
+from sapientia.config.enterprise_profiling_config import EnterpriseProfilingConfig
 from sapientia.models.profile import DatasetProfile
 from sapientia.services.runtime_config_service import RuntimeConfigService
 
@@ -18,8 +18,8 @@ class ProfileRepository:
         self.connection = connection
 
         self.config = RuntimeConfigService().get_config(
-            component_code=ProfilingConfig.COMPONENT_CODE,
-            defaults=ProfilingConfig.DEFAULTS,
+            component_code=EnterpriseProfilingConfig.COMPONENT_CODE,
+            defaults=EnterpriseProfilingConfig.DEFAULTS,
         )
 
     def refresh_profile(self, dataset_id: int, profile: DatasetProfile) -> None:
