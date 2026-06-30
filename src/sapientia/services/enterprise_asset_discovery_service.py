@@ -41,3 +41,23 @@ class EnterpriseAssetDiscoveryService:
             run_profiling=run_profiling,
             business_domain=business_domain,
         )
+
+    def discover_snowflake(
+        self,
+        project_id: int,
+        database_name: str,
+        schema_name: str | None = None,
+        table_name: str | None = None,
+        run_profiling: bool = True,
+        business_domain: str | None = None,
+        table_limit: int = 20,
+    ) -> dict:
+        return self.discovery_engine.discover_snowflake(
+            project_id=project_id,
+            database_name=database_name,
+            schema_name=schema_name,
+            table_name=table_name,
+            run_profiling=run_profiling,
+            business_domain=business_domain,
+            table_limit=table_limit,
+        )

@@ -12,7 +12,8 @@ from sapientia.cli.profile_cli import run_profile
 from sapientia.cli.semantic_cli import run_semantic
 from sapientia.cli.knowledge_cli import run_knowledge
 from sapientia.cli.fusion_cli import run_fusion
-
+from sapientia.cli.intelligence_cli import run_intelligence
+from sapientia.cli.concept_cli import run_concepts
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Sapientia CLI")
@@ -26,31 +27,39 @@ def build_parser() -> argparse.ArgumentParser:
         "ingest",
         help="Discover Enterprise Assets from a source",
     )
+
     ingest_parser.add_argument("--project-id", type=int, required=True)
-    ingest_parser.add_argument("--file-path", type=str, required=True)
+
     ingest_parser.add_argument(
         "--source-type",
         type=str,
         required=True,
-        choices=["csv", "json"],
+        choices=["csv", "json", "snowflake"],
     )
+
+    ingest_parser.add_argument("--file-path", type=str, required=False)
+
     ingest_parser.add_argument(
         "--business-domain",
         type=str,
         required=False,
         default="UNKNOWN",
-        help="Business domain code, for example FINANCE, SALES or SUPPLY_CHAIN.",
     )
+
     ingest_parser.add_argument(
         "--skip-profiling",
         action="store_true",
-        help="Skip Enterprise Profiling during discovery",
     )
+
     ingest_parser.add_argument(
         "--run-semantic",
         action="store_true",
-        help="Run semantic analysis after discovery completes",
     )
+
+    ingest_parser.add_argument("--snowflake-database", type=str, required=False)
+    ingest_parser.add_argument("--snowflake-schema", type=str, required=False)
+    ingest_parser.add_argument("--snowflake-table", type=str, required=False)
+    ingest_parser.add_argument("--table-limit", type=int, required=False, default=20)
 
     profile_parser = subparsers.add_parser(
         "profile",
@@ -70,15 +79,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     knowledge_parser.add_argument("--project-id", type=int, required=True)
     knowledge_parser.add_argument("--file-path", type=str, required=True)
-
     knowledge_parser.add_argument(
         "--business-domain",
         type=str,
         required=False,
         default="UNKNOWN",
-        help="Business domain code, for example FINANCE, SALES or SUPPLY_CHAIN.",
     )
-
 
     fusion_parser = subparsers.add_parser(
         "fusion",
@@ -87,6 +93,39 @@ def build_parser() -> argparse.ArgumentParser:
     fusion_parser.add_argument("--project-id", type=int, required=True)
     fusion_parser.add_argument("--document-id", type=int, required=False)
     fusion_parser.add_argument("--dataset-id", type=int, required=False)
+
+    intelligence_parser = subparsers.add_parser(
+        "intelligence",
+        help="Generate and persist Enterprise Intelligence reports",
+    )
+    intelligence_parser.add_argument("--project-id", type=int, required=True)
+    intelligence_parser.add_argument("--business-domain", type=str, required=True)
+    intelligence_parser.add_argument(
+        "--format",
+        type=str,
+        required=False,
+        default="text",
+        choices=["text", "json"],
+    )
+    intelligence_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Generate the report without persisting it to ekr_intelligence.",
+    )
+
+    concepts_parser = subparsers.add_parser(
+        "concepts",
+        help="Build Enterprise Concepts from semantic, knowledge and fusion outputs",
+    )
+    concepts_parser.add_argument("--project-id", type=int, required=True)
+    concepts_parser.add_argument("--business-domain", type=str, required=True)
+    concepts_parser.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Do not delete existing concepts before generating new ones.",
+    )
+
+
 
     return parser
 
@@ -109,6 +148,12 @@ def main() -> None:
 
     elif args.command == "fusion":
         result = run_fusion(args)
+
+    elif args.command == "intelligence":
+        result = run_intelligence(args)
+        
+    elif args.command == "concepts":
+        result = run_concepts(args)
 
     else:
         raise ValueError(f"Unsupported command: {args.command}")
