@@ -370,3 +370,32 @@ SELECT runtime_component_id, 'KNOWLEDGE_CONFIDENCE_WEIGHT', '0.15', 'DECIMAL', '
 FROM ekr_runtime.runtime_component
 WHERE component_code = 'KNOWLEDGE_FUSION'
 ON CONFLICT (runtime_component_id, parameter_name) DO NOTHING;
+
+
+
+
+UPDATE ekr_runtime.runtime_component
+SET
+    component_name = 'Enterprise Asset Discovery Engine',
+    component_code = 'ENTERPRISE_ASSET_DISCOVERY',
+    description = 'Discovers Enterprise Assets across organizational systems by extracting the minimum information required to understand each asset.'
+WHERE component_code = 'METADATA';
+
+UPDATE ekr_runtime.runtime_component
+SET
+    component_name = 'Enterprise Profiling Engine',
+    component_code = 'ENTERPRISE_PROFILING',
+    description = 'Profiles Enterprise Assets and persists quality, structure and statistical evidence.'
+WHERE component_code = 'PROFILING';
+
+UPDATE ekr_runtime.runtime_dependency rd
+SET dependency_type = dependency_type
+WHERE EXISTS (
+    SELECT 1
+    FROM ekr_runtime.runtime_component rc
+    WHERE rc.runtime_component_id = rd.runtime_component_id
+);
+
+SELECT *
+FROM ekr_runtime.runtime_component
+ORDER BY runtime_component_id;

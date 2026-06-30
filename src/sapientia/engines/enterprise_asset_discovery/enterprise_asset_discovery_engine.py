@@ -17,6 +17,7 @@ from sapientia.services.runtime_config_service import RuntimeConfigService
 from sapientia.connectors.csv.csv_connector import CSVConnector
 from sapientia.connectors.json.json_connector import JSONConnector
 
+from sapientia.repositories.business.business_domain_repository import BusinessDomainRepository
 from sapientia.repositories.core.source_system_repository import SourceSystemRepository
 from sapientia.repositories.core.dataset_repository import DatasetRepository
 from sapientia.repositories.core.column_repository import ColumnRepository
@@ -39,6 +40,7 @@ class EnterpriseAssetDiscoveryEngine:
         project_id: int,
         file_path: str,
         run_profiling: bool = True,
+        business_domain: str | None = None,
     ) -> dict:
         connector = CSVConnector()
 
@@ -54,6 +56,11 @@ class EnterpriseAssetDiscoveryEngine:
         engine = get_engine()
 
         with engine.begin() as connection:
+            business_domain_repo = BusinessDomainRepository(connection)
+            business_domain_id = business_domain_repo.get_business_domain_id(
+                business_domain
+            )
+
             source_repo = SourceSystemRepository(connection)
             dataset_repo = DatasetRepository(connection)
             column_repo = ColumnRepository(connection)
@@ -73,6 +80,7 @@ class EnterpriseAssetDiscoveryEngine:
                 row_count=dataset_metadata.row_count,
                 column_count=dataset_metadata.column_count,
                 file_size_bytes=dataset_metadata.file_size_bytes,
+                business_domain_id=business_domain_id,
             )
 
             column_repo.refresh_columns(
@@ -91,9 +99,13 @@ class EnterpriseAssetDiscoveryEngine:
             "source_system_id": source_system_id,
             "dataset_id": dataset_id,
             "enterprise_asset_type": "DATASET",
+            "business_domain": business_domain or "UNKNOWN",
+            "business_domain_id": business_domain_id,
             "columns_refreshed": len(dataset_metadata.columns),
             "profiled_records": len(profile_records),
-            "profile_record_limit": self.profiling_config["SAMPLE_SIZE"] if run_profiling else 0,
+            "profile_record_limit": self.profiling_config["SAMPLE_SIZE"]
+            if run_profiling
+            else 0,
             "profiled": run_profiling,
         }
 
@@ -102,6 +114,7 @@ class EnterpriseAssetDiscoveryEngine:
         project_id: int,
         file_path: str,
         run_profiling: bool = True,
+        business_domain: str | None = None,
     ) -> dict:
         connector = JSONConnector()
 
@@ -126,6 +139,11 @@ class EnterpriseAssetDiscoveryEngine:
         engine = get_engine()
 
         with engine.begin() as connection:
+            business_domain_repo = BusinessDomainRepository(connection)
+            business_domain_id = business_domain_repo.get_business_domain_id(
+                business_domain
+            )
+
             source_repo = SourceSystemRepository(connection)
             dataset_repo = DatasetRepository(connection)
             column_repo = ColumnRepository(connection)
@@ -146,6 +164,7 @@ class EnterpriseAssetDiscoveryEngine:
                 row_count=dataset_metadata.row_count,
                 column_count=dataset_metadata.column_count,
                 file_size_bytes=dataset_metadata.file_size_bytes,
+                business_domain_id=business_domain_id,
             )
 
             column_repo.refresh_columns(
@@ -173,6 +192,7 @@ class EnterpriseAssetDiscoveryEngine:
                     row_count=child_dataset.row_count,
                     column_count=child_dataset.column_count,
                     file_size_bytes=child_dataset.file_size_bytes,
+                    business_domain_id=business_domain_id,
                 )
 
                 column_repo.refresh_columns(
@@ -207,10 +227,14 @@ class EnterpriseAssetDiscoveryEngine:
             "source_system_id": source_system_id,
             "parent_dataset_id": parent_dataset_id,
             "enterprise_asset_type": "JSON_DATASET",
+            "business_domain": business_domain or "UNKNOWN",
+            "business_domain_id": business_domain_id,
             "child_datasets_created_or_updated": len(dataset_metadata.child_datasets),
             "relationships_created": len(dataset_metadata.relationships),
             "parent_columns_refreshed": len(dataset_metadata.columns),
             "profiled_records": len(profile_records),
-            "profile_record_limit": self.profiling_config["SAMPLE_SIZE"] if run_profiling else 0,
+            "profile_record_limit": self.profiling_config["SAMPLE_SIZE"]
+            if run_profiling
+            else 0,
             "profiled": run_profiling,
         }

@@ -19,9 +19,11 @@ def run_knowledge(args) -> dict:
         input_json={
             "project_id": args.project_id,
             "file_path": args.file_path,
+            "business_domain": args.business_domain,
         },
         operation=lambda: service.acquire_local_document(
             project_id=args.project_id,
             file_path=args.file_path,
+            business_domain=args.business_domain,
         ),
     )

@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ingest_parser = subparsers.add_parser(
         "ingest",
-        help="Ingest metadata from a source",
+        help="Discover Enterprise Assets from a source",
     )
     ingest_parser.add_argument("--project-id", type=int, required=True)
     ingest_parser.add_argument("--file-path", type=str, required=True)
@@ -35,19 +35,26 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["csv", "json"],
     )
     ingest_parser.add_argument(
+        "--business-domain",
+        type=str,
+        required=False,
+        default="UNKNOWN",
+        help="Business domain code, for example FINANCE, SALES or SUPPLY_CHAIN.",
+    )
+    ingest_parser.add_argument(
         "--skip-profiling",
         action="store_true",
-        help="Skip profiling during ingestion",
+        help="Skip Enterprise Profiling during discovery",
     )
     ingest_parser.add_argument(
         "--run-semantic",
         action="store_true",
-        help="Run semantic analysis after ingestion completes",
+        help="Run semantic analysis after discovery completes",
     )
 
     profile_parser = subparsers.add_parser(
         "profile",
-        help="Run profiling for an existing dataset",
+        help="Run Enterprise Profiling for an existing dataset",
     )
     profile_parser.add_argument("--dataset-id", type=int, required=True)
 
@@ -63,6 +70,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     knowledge_parser.add_argument("--project-id", type=int, required=True)
     knowledge_parser.add_argument("--file-path", type=str, required=True)
+
+    knowledge_parser.add_argument(
+        "--business-domain",
+        type=str,
+        required=False,
+        default="UNKNOWN",
+        help="Business domain code, for example FINANCE, SALES or SUPPLY_CHAIN.",
+    )
+
 
     fusion_parser = subparsers.add_parser(
         "fusion",

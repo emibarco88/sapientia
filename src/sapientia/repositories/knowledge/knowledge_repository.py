@@ -2,20 +2,24 @@
 Module: knowledge_repository.py
 
 Purpose:
-Persists acquired knowledge into ekr_knowledge tables.
+Persists acquired enterprise knowledge, document chunks, evidence,
+confidence scores, and knowledge relationships into ekr_knowledge.
 """
 
 import json
 from sqlalchemy import text
-
-from sapientia.models.knowledge import AcquiredDocument, KnowledgeItem
 
 
 class KnowledgeRepository:
     def __init__(self, connection):
         self.connection = connection
 
-    def upsert_document(self, project_id: int, document: AcquiredDocument) -> int:
+    def upsert_document(
+        self,
+        project_id: int,
+        document,
+        business_domain_id: int,
+    ) -> int:
         existing = self.connection.execute(
             text("""
                 SELECT document_id
@@ -30,12 +34,11 @@ class KnowledgeRepository:
         ).fetchone()
 
         if existing:
-            document_id = existing.document_id
-
             self.connection.execute(
                 text("""
                     UPDATE ekr_knowledge.document
                     SET
+                        business_domain_id = :business_domain_id,
                         title = :title,
                         document_type = :document_type,
                         source_type = :source_type,
@@ -44,7 +47,8 @@ class KnowledgeRepository:
                     WHERE document_id = :document_id
                 """),
                 {
-                    "document_id": document_id,
+                    "document_id": existing.document_id,
+                    "business_domain_id": business_domain_id,
                     "title": document.title,
                     "document_type": document.document_type,
                     "source_type": document.source_type,
@@ -52,15 +56,14 @@ class KnowledgeRepository:
                 },
             )
 
-            self.delete_document_children(document_id)
-
-            return document_id
+            return existing.document_id
 
         result = self.connection.execute(
             text("""
                 INSERT INTO ekr_knowledge.document
                 (
                     project_id,
+                    business_domain_id,
                     title,
                     document_type,
                     source_type,
@@ -70,6 +73,7 @@ class KnowledgeRepository:
                 VALUES
                 (
                     :project_id,
+                    :business_domain_id,
                     :title,
                     :document_type,
                     :source_type,
@@ -80,6 +84,7 @@ class KnowledgeRepository:
             """),
             {
                 "project_id": project_id,
+                "business_domain_id": business_domain_id,
                 "title": document.title,
                 "document_type": document.document_type,
                 "source_type": document.source_type,
@@ -89,36 +94,6 @@ class KnowledgeRepository:
         )
 
         return result.scalar_one()
-
-    def delete_document_children(self, document_id: int) -> None:
-        self.connection.execute(
-            text("""
-                DELETE FROM ekr_knowledge.knowledge_item
-                WHERE knowledge_item_id IN (
-                    SELECT knowledge_item_id
-                    FROM ekr_knowledge.knowledge_item
-                    WHERE project_id IN (
-                        SELECT project_id
-                        FROM ekr_knowledge.document
-                        WHERE document_id = :document_id
-                    )
-                )
-                AND knowledge_item_id IN (
-                    SELECT knowledge_item_id
-                    FROM ekr_knowledge.knowledge_evidence
-                    WHERE document_id = :document_id
-                )
-            """),
-            {"document_id": document_id},
-        )
-
-        self.connection.execute(
-            text("""
-                DELETE FROM ekr_knowledge.document_chunk
-                WHERE document_id = :document_id
-            """),
-            {"document_id": document_id},
-        )
 
     def insert_document_chunk(
         self,
@@ -136,28 +111,34 @@ class KnowledgeRepository:
                     document_id,
                     chunk_number,
                     heading,
+                    content,
                     start_line_number,
-                    end_line_number,
-                    content
+                    end_line_number
                 )
                 VALUES
                 (
                     :document_id,
                     :chunk_number,
                     :heading,
+                    :content,
                     :start_line_number,
-                    :end_line_number,
-                    :content
+                    :end_line_number
                 )
+                ON CONFLICT (document_id, chunk_number)
+                DO UPDATE SET
+                    heading = EXCLUDED.heading,
+                    content = EXCLUDED.content,
+                    start_line_number = EXCLUDED.start_line_number,
+                    end_line_number = EXCLUDED.end_line_number
                 RETURNING document_chunk_id
             """),
             {
                 "document_id": document_id,
                 "chunk_number": chunk_number,
                 "heading": heading,
+                "content": content,
                 "start_line_number": start_line_number,
                 "end_line_number": end_line_number,
-                "content": content,
             },
         )
 
@@ -166,7 +147,7 @@ class KnowledgeRepository:
     def insert_knowledge_item(
         self,
         project_id: int,
-        item: KnowledgeItem,
+        item,
     ) -> int:
         result = self.connection.execute(
             text("""
@@ -197,9 +178,12 @@ class KnowledgeRepository:
                 "knowledge_type": item.knowledge_type,
                 "name": item.name,
                 "description": item.description,
-                "status": item.status,
-                "canonical_flag": item.canonical_flag,
-                "knowledge_json": json.dumps(item.knowledge_json, default=str, allow_nan=False),
+                "status": getattr(item, "status", "ACTIVE"),
+                "canonical_flag": getattr(item, "canonical_flag", True),
+                "knowledge_json": json.dumps(
+                    getattr(item, "knowledge_json", {}),
+                    default=str,
+                ),
             },
         )
 
@@ -255,7 +239,10 @@ class KnowledgeRepository:
                 "rule_version": evidence.rule_version,
                 "extractor_name": evidence.extractor_name,
                 "extraction_method": evidence.extraction_method,
-                "evidence_json": json.dumps(evidence.evidence_json, default=str, allow_nan=False),
+                "evidence_json": json.dumps(
+                    getattr(evidence, "evidence_json", {}),
+                    default=str,
+                ),
             },
         )
 
@@ -306,7 +293,56 @@ class KnowledgeRepository:
                 "semantic_match_score": confidence.semantic_match_score,
                 "ai_validation_score": confidence.ai_validation_score,
                 "final_score": confidence.final_score,
-                "confidence_json": json.dumps(confidence.confidence_json, default=str, allow_nan=False),
+                "confidence_json": json.dumps(
+                    getattr(confidence, "confidence_json", {}),
+                    default=str,
+                ),
+            },
+        )
+
+        return result.scalar_one()
+
+    def insert_knowledge_relationship(
+        self,
+        source_knowledge_item_id: int,
+        target_knowledge_item_id: int,
+        relationship_type: str,
+        confidence_score: float | None = None,
+        reasoning: str | None = None,
+        relationship_json: dict | None = None,
+    ) -> int:
+        result = self.connection.execute(
+            text("""
+                INSERT INTO ekr_knowledge.knowledge_relationship
+                (
+                    source_knowledge_item_id,
+                    target_knowledge_item_id,
+                    relationship_type,
+                    confidence_score,
+                    reasoning,
+                    relationship_json
+                )
+                VALUES
+                (
+                    :source_knowledge_item_id,
+                    :target_knowledge_item_id,
+                    :relationship_type,
+                    :confidence_score,
+                    :reasoning,
+                    CAST(:relationship_json AS JSONB)
+                )
+                RETURNING knowledge_relationship_id
+            """),
+            {
+                "source_knowledge_item_id": source_knowledge_item_id,
+                "target_knowledge_item_id": target_knowledge_item_id,
+                "relationship_type": relationship_type,
+                "confidence_score": confidence_score,
+                "reasoning": reasoning,
+                "relationship_json": json.dumps(
+                    relationship_json or {},
+                    default=str,
+                ),
             },
         )
 

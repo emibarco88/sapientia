@@ -6,15 +6,32 @@ Coordinates acquisition of enterprise knowledge from external sources
 into the Enterprise Knowledge Repository.
 """
 
+from pathlib import Path
+
 from sapientia.db.connection import get_engine
-from sapientia.engines.knowledge_acquisition.connectors.text_connector import TextKnowledgeConnector
-from sapientia.engines.knowledge_acquisition.extractors.simple_knowledge_extractor import SimpleKnowledgeExtractor
+from sapientia.engines.knowledge_acquisition.connectors.text_connector import (
+    TextKnowledgeConnector,
+)
+from sapientia.engines.knowledge_acquisition.connectors.pdf_connector import (
+    PDFKnowledgeConnector,
+)
+from sapientia.engines.knowledge_acquisition.extractors.simple_knowledge_extractor import (
+    SimpleKnowledgeExtractor,
+)
+from sapientia.repositories.business.business_domain_repository import (
+    BusinessDomainRepository,
+)
 from sapientia.repositories.knowledge.knowledge_repository import KnowledgeRepository
 
 
 class KnowledgeAcquisitionEngine:
-    def acquire_local_document(self, project_id: int, file_path: str) -> dict:
-        connector = TextKnowledgeConnector()
+    def acquire_local_document(
+        self,
+        project_id: int,
+        file_path: str,
+        business_domain: str | None = None,
+    ) -> dict:
+        connector = self._get_connector(file_path)
         extractor = SimpleKnowledgeExtractor()
 
         document = connector.load_document(file_path)
@@ -23,11 +40,17 @@ class KnowledgeAcquisitionEngine:
         engine = get_engine()
 
         with engine.begin() as connection:
+            business_domain_repo = BusinessDomainRepository(connection)
+            business_domain_id = business_domain_repo.get_business_domain_id(
+                business_domain
+            )
+
             repository = KnowledgeRepository(connection)
 
             document_id = repository.upsert_document(
                 project_id=project_id,
                 document=document,
+                business_domain_id=business_domain_id,
             )
 
             chunk_id_by_number = {}
@@ -70,6 +93,22 @@ class KnowledgeAcquisitionEngine:
             "document_id": document_id,
             "title": document.title,
             "document_type": document.document_type,
+            "business_domain": business_domain or "UNKNOWN",
+            "business_domain_id": business_domain_id,
             "chunks_created": len(document.chunks),
             "knowledge_items_created": len(document.knowledge_items),
         }
+
+    def _get_connector(self, file_path: str):
+        suffix = Path(file_path).suffix.lower()
+
+        if suffix == ".pdf":
+            return PDFKnowledgeConnector()
+
+        if suffix in [".md", ".txt"]:
+            return TextKnowledgeConnector()
+
+        raise ValueError(
+            f"Unsupported knowledge document type: {suffix}. "
+            "Supported types are .md, .txt and .pdf."
+        )

@@ -8,7 +8,9 @@ The CLI command remains `ingest` for backwards compatibility, but the
 underlying capability is Enterprise Asset Discovery.
 """
 
-from sapientia.services.enterprise_asset_discovery_service import EnterpriseAssetDiscoveryService
+from sapientia.services.enterprise_asset_discovery_service import (
+    EnterpriseAssetDiscoveryService,
+)
 from sapientia.services.semantic_service import SemanticService
 
 
@@ -22,6 +24,7 @@ def run_ingest(args) -> dict:
             project_id=args.project_id,
             file_path=args.file_path,
             run_profiling=run_profiling,
+            business_domain=args.business_domain,
         )
 
         dataset_id = result["dataset_id"]
@@ -31,6 +34,7 @@ def run_ingest(args) -> dict:
             project_id=args.project_id,
             file_path=args.file_path,
             run_profiling=run_profiling,
+            business_domain=args.business_domain,
         )
 
         dataset_id = result["parent_dataset_id"]

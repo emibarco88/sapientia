@@ -2,12 +2,15 @@
 Module: knowledge_fusion_engine.py
 
 Purpose:
-Fuses metadata, profiling, semantic and documented knowledge into
-trusted enterprise asset links.
+Fuses discovery, profiling, semantic and documented knowledge into
+persistent enterprise intelligence links.
 """
 
 from sapientia.db.connection import get_engine
-from sapientia.repositories.queries.knowledge_fusion_repository import KnowledgeFusionRepository
+from sapientia.repositories.knowledge.knowledge_fusion_repository import (
+    KnowledgeFusionRepository,
+)
+
 from sapientia.engines.knowledge_fusion.candidate_generator import CandidateGenerator
 from sapientia.engines.knowledge_fusion.link_scorer import LinkScorer
 
