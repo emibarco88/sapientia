@@ -14,6 +14,8 @@ from sapientia.cli.knowledge_cli import run_knowledge
 from sapientia.cli.fusion_cli import run_fusion
 from sapientia.cli.intelligence_cli import run_intelligence
 from sapientia.cli.concept_cli import run_concepts
+from sapientia.cli.ai_advisor_cli import run_ai_advisor
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Sapientia CLI")
@@ -27,35 +29,17 @@ def build_parser() -> argparse.ArgumentParser:
         "ingest",
         help="Discover Enterprise Assets from a source",
     )
-
     ingest_parser.add_argument("--project-id", type=int, required=True)
-
     ingest_parser.add_argument(
         "--source-type",
         type=str,
         required=True,
         choices=["csv", "json", "snowflake"],
     )
-
     ingest_parser.add_argument("--file-path", type=str, required=False)
-
-    ingest_parser.add_argument(
-        "--business-domain",
-        type=str,
-        required=False,
-        default="UNKNOWN",
-    )
-
-    ingest_parser.add_argument(
-        "--skip-profiling",
-        action="store_true",
-    )
-
-    ingest_parser.add_argument(
-        "--run-semantic",
-        action="store_true",
-    )
-
+    ingest_parser.add_argument("--business-domain", type=str, required=False, default="UNKNOWN")
+    ingest_parser.add_argument("--skip-profiling", action="store_true")
+    ingest_parser.add_argument("--run-semantic", action="store_true")
     ingest_parser.add_argument("--snowflake-database", type=str, required=False)
     ingest_parser.add_argument("--snowflake-schema", type=str, required=False)
     ingest_parser.add_argument("--snowflake-table", type=str, required=False)
@@ -79,12 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     knowledge_parser.add_argument("--project-id", type=int, required=True)
     knowledge_parser.add_argument("--file-path", type=str, required=True)
-    knowledge_parser.add_argument(
-        "--business-domain",
-        type=str,
-        required=False,
-        default="UNKNOWN",
-    )
+    knowledge_parser.add_argument("--business-domain", type=str, required=False, default="UNKNOWN")
 
     fusion_parser = subparsers.add_parser(
         "fusion",
@@ -93,6 +72,14 @@ def build_parser() -> argparse.ArgumentParser:
     fusion_parser.add_argument("--project-id", type=int, required=True)
     fusion_parser.add_argument("--document-id", type=int, required=False)
     fusion_parser.add_argument("--dataset-id", type=int, required=False)
+
+    concepts_parser = subparsers.add_parser(
+        "concepts",
+        help="Build Enterprise Concepts from semantic, knowledge and fusion outputs",
+    )
+    concepts_parser.add_argument("--project-id", type=int, required=True)
+    concepts_parser.add_argument("--business-domain", type=str, required=True)
+    concepts_parser.add_argument("--no-refresh", action="store_true")
 
     intelligence_parser = subparsers.add_parser(
         "intelligence",
@@ -107,25 +94,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         choices=["text", "json"],
     )
-    intelligence_parser.add_argument(
-        "--no-persist",
-        action="store_true",
-        help="Generate the report without persisting it to ekr_intelligence.",
-    )
+    intelligence_parser.add_argument("--no-persist", action="store_true")
 
-    concepts_parser = subparsers.add_parser(
-        "concepts",
-        help="Build Enterprise Concepts from semantic, knowledge and fusion outputs",
+    ai_advisor_parser = subparsers.add_parser(
+        "ai-advisor",
+        help="Ask questions using Sapientia Enterprise Intelligence context",
     )
-    concepts_parser.add_argument("--project-id", type=int, required=True)
-    concepts_parser.add_argument("--business-domain", type=str, required=True)
-    concepts_parser.add_argument(
-        "--no-refresh",
-        action="store_true",
-        help="Do not delete existing concepts before generating new ones.",
-    )
-
-
+    ai_advisor_parser.add_argument("--project-id", type=int, required=True)
+    ai_advisor_parser.add_argument("--business-domain", type=str, required=True)
+    ai_advisor_parser.add_argument("--question", type=str, required=True)
+    ai_advisor_parser.add_argument("--no-persist", action="store_true")
 
     return parser
 
@@ -136,25 +114,20 @@ def main() -> None:
 
     if args.command == "ingest":
         result = run_ingest(args)
-
     elif args.command == "profile":
         result = run_profile(args)
-
     elif args.command == "semantic":
         result = run_semantic(args)
-
     elif args.command == "knowledge":
         result = run_knowledge(args)
-
     elif args.command == "fusion":
         result = run_fusion(args)
-
-    elif args.command == "intelligence":
-        result = run_intelligence(args)
-        
     elif args.command == "concepts":
         result = run_concepts(args)
-
+    elif args.command == "intelligence":
+        result = run_intelligence(args)
+    elif args.command == "ai-advisor":
+        result = run_ai_advisor(args)
     else:
         raise ValueError(f"Unsupported command: {args.command}")
 

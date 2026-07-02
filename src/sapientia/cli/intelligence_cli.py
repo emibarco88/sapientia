@@ -38,6 +38,7 @@ def run_intelligence(args) -> dict:
         "datasets": len(report["datasets"]),
         "knowledge_items": len(report["knowledge_items"]),
         "intelligence_links": len(report["intelligence_links"]),
+        "enterprise_concepts": len(report.get("enterprise_concepts", [])),
         "findings": len(report["findings"]),
     }
 
@@ -56,13 +57,24 @@ def _print_text_report(report: dict) -> None:
     print("-" * 80)
 
     print("\nSUMMARY")
-    print(f"Datasets:            {summary.get('dataset_count', 0)}")
-    print(f"Columns:             {summary.get('column_count', 0)}")
-    print(f"Semantic Columns:    {summary.get('semantic_column_count', 0)}")
-    print(f"Intelligence Links:  {summary.get('intelligence_link_count', 0)}")
+    print(f"Datasets:             {summary.get('dataset_count', 0)}")
+    print(f"Columns:              {summary.get('column_count', 0)}")
+    print(f"Semantic Columns:     {summary.get('semantic_column_count', 0)}")
+    print(f"Intelligence Links:   {summary.get('intelligence_link_count', 0)}")
+    print(f"Enterprise Concepts:  {len(report.get('enterprise_concepts', []))}")
 
     print("\nSUMMARY TEXT")
     print(report.get("summary_text"))
+
+    print("\nENTERPRISE CONCEPTS")
+    for concept in report.get("enterprise_concepts", []):
+        print(
+            f"- [{concept.get('enterprise_concept_id')}] "
+            f"{concept.get('concept_name')} "
+            f"({concept.get('concept_type')}) "
+            f"confidence={concept.get('confidence_score')} "
+            f"evidence={concept.get('evidence_count')}"
+        )
 
     print("\nFINDINGS")
     for finding in report.get("findings", [])[:20]:

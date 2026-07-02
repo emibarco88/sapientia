@@ -310,6 +310,52 @@ class EnterpriseIntelligenceRepository:
 
         return result.scalar_one()
 
+    def get_enterprise_concepts(self, project_id: int, business_domain: str) -> list[dict]:
+        rows = self.connection.execute(
+            text("""
+                SELECT
+                    ec.enterprise_concept_id,
+                    ec.project_id,
+                    bd.domain_code,
+                    bd.domain_name,
+                    ec.concept_name,
+                    ec.concept_type,
+                    ec.concept_description,
+                    ec.confidence_score,
+                    ec.concept_status,
+                    ec.concept_json,
+                    COUNT(ece.enterprise_concept_evidence_id) AS evidence_count
+                FROM ekr_intelligence.enterprise_concept ec
+                LEFT JOIN ekr_business.business_domain bd
+                    ON bd.business_domain_id = ec.business_domain_id
+                LEFT JOIN ekr_intelligence.enterprise_concept_evidence ece
+                    ON ece.enterprise_concept_id = ec.enterprise_concept_id
+                WHERE ec.project_id = :project_id
+                  AND bd.domain_code = :business_domain
+                GROUP BY
+                    ec.enterprise_concept_id,
+                    ec.project_id,
+                    bd.domain_code,
+                    bd.domain_name,
+                    ec.concept_name,
+                    ec.concept_type,
+                    ec.concept_description,
+                    ec.confidence_score,
+                    ec.concept_status,
+                    ec.concept_json
+                ORDER BY ec.concept_type, ec.concept_name
+            """),
+            {
+                "project_id": project_id,
+                "business_domain": business_domain,
+            },
+            ).mappings().all()
+
+        return [dict(row) for row in rows]
+
+
+
+
     def create_evidence(
         self,
         intelligence_finding_id: int,
@@ -361,5 +407,8 @@ class EnterpriseIntelligenceRepository:
                 "evidence_json": json.dumps(evidence, default=str),
             },
         )
+
+    
+        
 
         return result.scalar_one()

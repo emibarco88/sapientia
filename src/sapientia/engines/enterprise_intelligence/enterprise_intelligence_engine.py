@@ -38,6 +38,10 @@ class EnterpriseIntelligenceEngine:
             knowledge_items = repository.get_knowledge_items(project_id, business_domain)
             intelligence_links = repository.get_intelligence_links(project_id, business_domain)
             lineage = repository.get_lineage(project_id, business_domain)
+            enterprise_concepts = repository.get_enterprise_concepts(
+                project_id=project_id,
+                business_domain=business_domain,
+            )
 
             findings = self._build_findings(
                 project_id=project_id,
@@ -47,6 +51,7 @@ class EnterpriseIntelligenceEngine:
                 knowledge_items=knowledge_items,
                 intelligence_links=intelligence_links,
                 lineage=lineage,
+                enterprise_concepts=enterprise_concepts,
             )
 
             ai_context = self._build_ai_context(
@@ -58,6 +63,7 @@ class EnterpriseIntelligenceEngine:
                 intelligence_links=intelligence_links,
                 lineage=lineage,
                 findings=findings,
+                enterprise_concepts=enterprise_concepts,
             )
 
             summary_text = self._build_summary_text(
@@ -67,6 +73,7 @@ class EnterpriseIntelligenceEngine:
                 knowledge_items=knowledge_items,
                 intelligence_links=intelligence_links,
                 lineage=lineage,
+                enterprise_concepts=enterprise_concepts,
             )
 
             report = {
@@ -80,6 +87,7 @@ class EnterpriseIntelligenceEngine:
                 "knowledge_items": knowledge_items,
                 "intelligence_links": intelligence_links,
                 "lineage": lineage,
+                "enterprise_concepts": enterprise_concepts,
                 "findings": findings,
                 "summary_text": summary_text,
                 "ai_context": ai_context,
@@ -125,13 +133,15 @@ class EnterpriseIntelligenceEngine:
         knowledge_items: list[dict],
         intelligence_links: list[dict],
         lineage: list[dict],
+        enterprise_concepts: list[dict],
     ) -> str:
         return (
             f"Sapientia analysed the {business_domain} business domain. "
             f"It found {len(datasets)} enterprise dataset(s), "
             f"{len(semantic_columns)} semantic classification(s), "
             f"{len(knowledge_items)} knowledge item(s), "
-            f"{len(intelligence_links)} intelligence link(s), and "
+            f"{len(intelligence_links)} intelligence link(s), "
+            f"{len(enterprise_concepts)} enterprise concept(s), and "
             f"{len(lineage)} lineage evidence record(s)."
         )
 
@@ -144,6 +154,7 @@ class EnterpriseIntelligenceEngine:
         knowledge_items: list[dict],
         intelligence_links: list[dict],
         lineage: list[dict],
+        enterprise_concepts: list[dict],
     ) -> list[dict]:
         findings = []
 
@@ -154,8 +165,9 @@ class EnterpriseIntelligenceEngine:
                 "finding_description": (
                     f"Sapientia analysed {len(datasets)} dataset(s), "
                     f"{len(semantic_columns)} semantic column(s), "
-                    f"{len(knowledge_items)} knowledge item(s), and "
-                    f"{len(intelligence_links)} intelligence link(s)."
+                    f"{len(knowledge_items)} knowledge item(s), "
+                    f"{len(intelligence_links)} intelligence link(s), and "
+                    f"{len(enterprise_concepts)} enterprise concept(s)."
                 ),
                 "finding_interpretation": (
                     "This finding summarises the current level of enterprise "
@@ -168,6 +180,45 @@ class EnterpriseIntelligenceEngine:
                 "evidence": [],
             }
         )
+
+        for concept in enterprise_concepts:
+            findings.append(
+                {
+                    "finding_type": "ENTERPRISE_CONCEPT",
+                    "finding_title": (
+                        f"{concept.get('concept_name')} concept identified"
+                    ),
+                    "finding_description": (
+                        concept.get("concept_description")
+                        or (
+                            f"Sapientia identified {concept.get('concept_name')} "
+                            f"as a {concept.get('concept_type')} concept."
+                        )
+                    ),
+                    "finding_interpretation": (
+                        "This concept represents a consolidated business object "
+                        "derived from semantic classifications, knowledge items "
+                        "and fusion evidence. It helps AI reason about the business "
+                        "using business concepts rather than raw tables."
+                    ),
+                    "confidence_score": concept.get("confidence_score"),
+                    "severity_level": "INFO",
+                    "source_object_type": "ENTERPRISE_CONCEPT",
+                    "source_object_id": concept.get("enterprise_concept_id"),
+                    "evidence": [
+                        {
+                            "evidence_type": "CONCEPT",
+                            "evidence_source": "Enterprise Concept Engine",
+                            "evidence_text": (
+                                f"Concept {concept.get('concept_name')} has "
+                                f"{concept.get('evidence_count')} supporting "
+                                f"evidence record(s)."
+                            ),
+                            "confidence_score": concept.get("confidence_score"),
+                        }
+                    ],
+                }
+            )
 
         for column in semantic_columns:
             if column.get("is_key_candidate"):
@@ -209,9 +260,7 @@ class EnterpriseIntelligenceEngine:
                 findings.append(
                     {
                         "finding_type": "PII",
-                        "finding_title": (
-                            f"{column['column_name']} may contain PII"
-                        ),
+                        "finding_title": f"{column['column_name']} may contain PII",
                         "finding_description": (
                             f"Sapientia classified {column['dataset_name']}."
                             f"{column['column_name']} as potentially sensitive."
@@ -317,6 +366,7 @@ class EnterpriseIntelligenceEngine:
         intelligence_links: list[dict],
         lineage: list[dict],
         findings: list[dict],
+        enterprise_concepts: list[dict],
     ) -> dict:
         return {
             "instruction": (
@@ -325,6 +375,7 @@ class EnterpriseIntelligenceEngine:
             ),
             "business_domain": business_domain,
             "summary": summary,
+            "enterprise_concepts": enterprise_concepts,
             "enterprise_assets": datasets,
             "semantic_understanding": semantic_columns,
             "enterprise_knowledge": knowledge_items,
