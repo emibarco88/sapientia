@@ -11,3 +11,10 @@ CREATE SCHEMA IF NOT EXISTS ekr_semantic;
 CREATE SCHEMA IF NOT EXISTS ekr_knowledge;
 
 CREATE SCHEMA IF NOT EXISTS ekr_runtime;
+
+CREATE SCHEMA IF NOT EXISTS ekr_business;
+
+CREATE SCHEMA IF NOT EXISTS ekr_intelligence;
+
+CREATE SCHEMA IF NOT EXISTS ekr_connection;
+

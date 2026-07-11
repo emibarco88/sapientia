@@ -9,9 +9,8 @@ links into persistent enterprise concepts.
 from collections import defaultdict
 
 from sapientia.db.connection import get_engine
-from sapientia.repositories.intelligence.enterprise_concept_repository import (
-    EnterpriseConceptRepository,
-)
+from sapientia.repositories.intelligence.enterprise_intelligence_concept_repository import EnterpriseConceptRepository
+
 
 
 class EnterpriseConceptEngine:
