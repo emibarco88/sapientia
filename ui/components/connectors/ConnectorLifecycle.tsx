@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   Check,
   Database,
+  ExternalLink,
   Lightbulb,
   Loader2,
   PlugZap,
@@ -73,15 +76,32 @@ type UnderstandingResponse = {
   message: string;
 
   datasets_processed: number;
-  columns_analysed: number;
   semantic_columns: number;
-
-  evidence_links_created: number;
   persisted_intelligence_links: number;
-
-  concepts_created: number;
   persisted_concepts: number;
-  concept_evidence: number;
+};
+
+
+type IntelligenceResponse = {
+  status: string;
+  message: string;
+
+  project_id: number;
+  business_domain: string;
+
+  intelligence_report_id:
+    number | null;
+
+  datasets_analysed: number;
+  semantic_columns: number;
+  knowledge_items: number;
+  intelligence_links: number;
+  enterprise_concepts: number;
+  findings_generated: number;
+  lineage_records: number;
+
+  summary_text:
+    string | null;
 };
 
 
@@ -108,9 +128,9 @@ export default function ConnectorLifecycle({
   const [
     lifecycle,
     setLifecycle,
-  ] = useState<LifecycleResponse | null>(
-    null
-  );
+  ] = useState<
+    LifecycleResponse | null
+  >(null);
 
   const [
     activeAction,
@@ -119,6 +139,7 @@ export default function ConnectorLifecycle({
     | "test"
     | "discovery"
     | "understanding"
+    | "intelligence"
     | null
   >(null);
 
@@ -139,6 +160,13 @@ export default function ConnectorLifecycle({
     UnderstandingResponse | null
   >(null);
 
+  const [
+    intelligenceSummary,
+    setIntelligenceSummary,
+  ] = useState<
+    IntelligenceResponse | null
+  >(null);
+
 
   const loadLifecycle =
     useCallback(async () => {
@@ -155,6 +183,7 @@ export default function ConnectorLifecycle({
     setError("");
     setSuccess("");
     setUnderstandingSummary(null);
+    setIntelligenceSummary(null);
 
     void loadLifecycle().catch(
       (cause) => {
@@ -169,6 +198,12 @@ export default function ConnectorLifecycle({
   }, [loadLifecycle]);
 
 
+  async function refreshAfterAction() {
+    await loadLifecycle();
+    await onLifecycleChanged?.();
+  }
+
+
   async function runTest() {
     setActiveAction("test");
     setError("");
@@ -181,8 +216,7 @@ export default function ConnectorLifecycle({
         "Connection validated successfully."
       );
 
-      await loadLifecycle();
-      await onLifecycleChanged?.();
+      await refreshAfterAction();
 
     } catch (cause) {
       setError(
@@ -203,6 +237,7 @@ export default function ConnectorLifecycle({
     setError("");
     setSuccess("");
     setUnderstandingSummary(null);
+    setIntelligenceSummary(null);
 
     try {
       await onDiscoverAssets();
@@ -211,8 +246,7 @@ export default function ConnectorLifecycle({
         "Asset discovery completed successfully."
       );
 
-      await loadLifecycle();
-      await onLifecycleChanged?.();
+      await refreshAfterAction();
 
     } catch (cause) {
       setError(
@@ -233,6 +267,7 @@ export default function ConnectorLifecycle({
     setError("");
     setSuccess("");
     setUnderstandingSummary(null);
+    setIntelligenceSummary(null);
 
     try {
       const response =
@@ -247,11 +282,15 @@ export default function ConnectorLifecycle({
           }
         );
 
-      setUnderstandingSummary(response);
-      setSuccess(response.message);
+      setUnderstandingSummary(
+        response
+      );
 
-      await loadLifecycle();
-      await onLifecycleChanged?.();
+      setSuccess(
+        response.message
+      );
+
+      await refreshAfterAction();
 
     } catch (cause) {
       setError(
@@ -264,7 +303,71 @@ export default function ConnectorLifecycle({
       try {
         await loadLifecycle();
       } catch {
-        // Preserve the original build error.
+        // Keep the original error visible.
+      }
+
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
+
+  async function runIntelligence() {
+    const domainCode =
+      lifecycle?.domain_code;
+
+    if (!domainCode) {
+      setError(
+        "Assign the connector to a business workspace before generating intelligence."
+      );
+
+      return;
+    }
+
+    setActiveAction(
+      "intelligence"
+    );
+
+    setError("");
+    setSuccess("");
+    setIntelligenceSummary(null);
+
+    try {
+      const response =
+        await apiFetch<IntelligenceResponse>(
+          `/intelligence/${domainCode}/generate`,
+          {
+            method: "POST",
+
+            body: JSON.stringify({
+              project_id: 1,
+              persist: true,
+            }),
+          }
+        );
+
+      setIntelligenceSummary(
+        response
+      );
+
+      setSuccess(
+        response.message
+      );
+
+      await refreshAfterAction();
+
+    } catch (cause) {
+      setError(
+        getMessage(
+          cause,
+          "Unable to generate Enterprise Intelligence."
+        )
+      );
+
+      try {
+        await loadLifecycle();
+      } catch {
+        // Keep the original error visible.
       }
 
     } finally {
@@ -285,6 +388,10 @@ export default function ConnectorLifecycle({
     lifecycle?.understanding.status
     === "COMPLETED";
 
+  const intelligenceCompleted =
+    lifecycle?.intelligence.status
+    === "COMPLETED";
+
 
   return (
     <div className="space-y-5">
@@ -294,13 +401,13 @@ export default function ConnectorLifecycle({
         </p>
 
         <h3 className="mt-2 text-2xl font-bold text-slate-950">
-          Turn connected data into enterprise understanding
+          Turn connected data into enterprise intelligence
         </h3>
 
         <p className="mt-2 max-w-3xl leading-6 text-slate-600">
           Validate the source, discover its assets,
-          identify business meaning and prepare the
-          selected workspace for Enterprise Intelligence.
+          identify business meaning, generate findings
+          and prepare trusted context for the AI Advisor.
         </p>
       </div>
 
@@ -318,7 +425,17 @@ export default function ConnectorLifecycle({
 
       {understandingSummary && (
         <UnderstandingSummary
-          result={understandingSummary}
+          result={
+            understandingSummary
+          }
+        />
+      )}
+
+      {intelligenceSummary && (
+        <IntelligenceSummary
+          result={
+            intelligenceSummary
+          }
         />
       )}
 
@@ -330,7 +447,9 @@ export default function ConnectorLifecycle({
           }
           title="Connection"
           description="Validate that Sapientia can securely access the configured source."
-          status={connectionStatus}
+          status={
+            connectionStatus
+          }
           message={
             lifecycle?.connection
               .last_tested_at
@@ -440,7 +559,9 @@ export default function ConnectorLifecycle({
                 activeAction !== null
                 || !discoveryCompleted
               }
-              onClick={runUnderstanding}
+              onClick={
+                runUnderstanding
+              }
             >
               {understandingCompleted
                 ? "Rebuild Understanding"
@@ -455,27 +576,67 @@ export default function ConnectorLifecycle({
             <Sparkles className="h-5 w-5" />
           }
           title="Enterprise Intelligence"
-          description="Generate findings, business narratives and grounded context for the AI Advisor."
+          description="Generate explainable findings, a business narrative, supporting evidence and AI-ready context."
           status={
             lifecycle?.intelligence
               .status
             || "PENDING"
           }
           message={
-            understandingCompleted
-              ? "Enterprise Understanding is ready. Intelligence generation is the next capability."
-              : "Build Enterprise Understanding first."
+            lifecycle?.intelligence
+              .message
+            || (
+              understandingCompleted
+                ? "Ready to generate Enterprise Intelligence."
+                : "Build Enterprise Understanding first."
+            )
+          }
+          active={
+            activeAction
+            === "intelligence"
           }
           action={
             <StageButton
-              disabled
-              onClick={() => undefined}
+              loading={
+                activeAction
+                === "intelligence"
+              }
+              loadingLabel="Generating..."
+              disabled={
+                activeAction !== null
+                || !understandingCompleted
+                || !lifecycle?.domain_code
+              }
+              onClick={
+                runIntelligence
+              }
             >
-              Generate Intelligence
+              {intelligenceCompleted
+                ? "Regenerate Intelligence"
+                : "Generate Intelligence"}
             </StageButton>
           }
         />
       </div>
+
+      {intelligenceCompleted
+        && lifecycle?.domain_code && (
+        <Link
+          href={
+            `/workspace/${lifecycle.domain_code}`
+          }
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-3 font-semibold text-indigo-700 transition hover:bg-indigo-100"
+        >
+          Open{" "}
+          {
+            lifecycle.domain_name
+            || lifecycle.domain_code
+          }{" "}
+          Workspace
+
+          <ExternalLink className="h-4 w-4" />
+        </Link>
+      )}
     </div>
   );
 }
@@ -526,6 +687,70 @@ function UnderstandingSummary({
 }
 
 
+function IntelligenceSummary({
+  result,
+}: {
+  result: IntelligenceResponse;
+}) {
+  return (
+    <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-widest text-indigo-700">
+            Intelligence summary
+          </p>
+
+          {result.summary_text && (
+            <p className="mt-2 max-w-3xl leading-6 text-indigo-950">
+              {result.summary_text}
+            </p>
+          )}
+        </div>
+
+        {result.intelligence_report_id && (
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-indigo-700">
+            Report #
+            {
+              result.intelligence_report_id
+            }
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryMetric
+          label="Datasets"
+          value={
+            result.datasets_analysed
+          }
+        />
+
+        <SummaryMetric
+          label="Concepts"
+          value={
+            result.enterprise_concepts
+          }
+        />
+
+        <SummaryMetric
+          label="Findings"
+          value={
+            result.findings_generated
+          }
+        />
+
+        <SummaryMetric
+          label="Evidence Links"
+          value={
+            result.intelligence_links
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+
 function SummaryMetric({
   label,
   value,
@@ -534,7 +759,7 @@ function SummaryMetric({
   value: number;
 }) {
   return (
-    <div className="rounded-xl border border-emerald-100 bg-white p-3">
+    <div className="rounded-xl border border-white/80 bg-white p-3">
       <p className="text-xs uppercase tracking-wide text-slate-400">
         {label}
       </p>

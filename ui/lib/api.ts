@@ -2,69 +2,115 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://127.0.0.1:8000";
 
+
+const TOKEN_KEY =
+  "sapientia_token";
+
+
 export function getToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
 
   return localStorage.getItem(
-    "sapientia_token"
+    TOKEN_KEY
   );
 }
+
 
 export function setToken(
   token: string
 ): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
   localStorage.setItem(
-    "sapientia_token",
+    TOKEN_KEY,
     token
   );
 }
 
+
 export function clearToken(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
   localStorage.removeItem(
-    "sapientia_token"
+    TOKEN_KEY
   );
 }
 
-export async function apiFetch<T = any>(
+
+function redirectToLogin(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const currentPath =
+    window.location.pathname;
+
+  if (currentPath !== "/") {
+    window.location.replace("/");
+  }
+}
+
+
+export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken();
 
   const isFormData =
-    typeof FormData !== "undefined" &&
-    options.body instanceof FormData;
+    typeof FormData !== "undefined"
+    && options.body instanceof FormData;
 
-  const response = await fetch(
-    `${API_URL}${path}`,
-    {
-      ...options,
+  const headers =
+    new Headers(options.headers);
 
-      headers: {
-        ...(
-          !isFormData
-            ? {
-                "Content-Type":
-                  "application/json",
-              }
-            : {}
-        ),
+  if (!isFormData) {
+    headers.set(
+      "Content-Type",
+      "application/json"
+    );
+  }
 
-        ...(
-          token
-            ? {
-                Authorization:
-                  `Bearer ${token}`,
-              }
-            : {}
-        ),
+  if (token) {
+    headers.set(
+      "Authorization",
+      `Bearer ${token}`
+    );
+  }
 
-        ...(options.headers || {}),
-      },
-    }
-  );
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `${API_URL}${path}`,
+      {
+        ...options,
+        headers,
+      }
+    );
+  } catch (error) {
+    throw new Error(
+      "Unable to connect to the Sapientia API."
+    );
+  }
+
+  if (
+    response.status === 401
+    || response.status === 403
+  ) {
+    clearToken();
+    redirectToLogin();
+
+    throw new Error(
+      "Your session has expired. Please log in again."
+    );
+  }
 
   if (!response.ok) {
     let message =
@@ -75,15 +121,19 @@ export async function apiFetch<T = any>(
         await response.json();
 
       message =
-        payload.detail ||
-        payload.message ||
-        message;
+        payload.detail
+        || payload.message
+        || message;
     } catch {
-      const responseText =
-        await response.text();
+      try {
+        const responseText =
+          await response.text();
 
-      if (responseText) {
-        message = responseText;
+        if (responseText) {
+          message = responseText;
+        }
+      } catch {
+        // Preserve the default message.
       }
     }
 
@@ -94,5 +144,18 @@ export async function apiFetch<T = any>(
     return null as T;
   }
 
-  return response.json();
+  const contentType =
+    response.headers.get(
+      "content-type"
+    );
+
+  if (
+    !contentType?.includes(
+      "application/json"
+    )
+  ) {
+    return null as T;
+  }
+
+  return response.json() as Promise<T>;
 }
