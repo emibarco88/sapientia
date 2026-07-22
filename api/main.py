@@ -4,6 +4,9 @@ from sapientia.config import (
 
 load_application_environment()
 
+from api.routers.enterprise_prompt import (
+    router as enterprise_prompt_router,
+)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import (
@@ -24,12 +27,16 @@ from api.routers.connector_lifecycle import (
 from api.routers.domains import (
     router as domains_router,
 )
+from api.routers.enterprise_context import (
+    router as enterprise_context_router,
+)
 from api.routers.intelligence import (
     router as intelligence_router,
 )
 from api.routers.sources import (
     router as sources_router,
 )
+
 
 
 app = FastAPI(
@@ -54,6 +61,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(
+    enterprise_prompt_router
+)
 
 app.include_router(auth_router)
 app.include_router(domains_router)
@@ -61,8 +71,13 @@ app.include_router(concepts_router)
 app.include_router(intelligence_router)
 app.include_router(ai_advisor_router)
 app.include_router(sources_router)
+
 app.include_router(
     connector_lifecycle_router
+)
+
+app.include_router(
+    enterprise_context_router
 )
 
 

@@ -2,15 +2,32 @@
 Module: ai_advisor_service.py
 
 Purpose:
-Service facade for Sapientia AI Advisor.
+Service façade for Sapientia AI Advisor.
 """
 
-from sapientia.engines.ai_advisor.ai_advisor_engine import AIAdvisorEngine
+from __future__ import annotations
+
+from typing import Any
+
+from sapientia.engines.ai_advisor.ai_advisor_engine import (
+    AIAdvisorEngine,
+)
 
 
 class AIAdvisorService:
-    def __init__(self):
-        self.engine = AIAdvisorEngine()
+    """
+    Application service used by CLI and API consumers to ask
+    enterprise questions.
+    """
+
+    def __init__(
+        self,
+        engine: AIAdvisorEngine | None = None,
+    ) -> None:
+        self.engine = (
+            engine
+            or AIAdvisorEngine()
+        )
 
     def ask_domain_question(
         self,
@@ -18,7 +35,7 @@ class AIAdvisorService:
         business_domain: str,
         question: str,
         persist: bool = True,
-    ) -> dict:
+    ) -> dict[str, Any]:
         return self.engine.ask_domain_question(
             project_id=project_id,
             business_domain=business_domain,

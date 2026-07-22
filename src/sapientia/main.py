@@ -5,6 +5,10 @@ Purpose:
 Sapientia command-line entry point.
 """
 
+from sapientia.cli.enterprise_context_cli import (
+    run_enterprise_context,
+)
+
 from sapientia.config import (
     load_application_environment,
 )
@@ -34,6 +38,26 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command",
         required=True,
     )
+
+    context_parser = subparsers.add_parser(
+        "enterprise-context"
+    )
+
+    context_parser.add_argument(
+        "--project-id",
+        type=int,
+        required=True,
+    )
+
+    context_parser.add_argument(
+        "--business-domain",
+        required=True,
+    )
+
+    context_parser.set_defaults(
+        func=run_enterprise_context,
+    )
+
 
     ingest_parser = subparsers.add_parser(
         "ingest",
