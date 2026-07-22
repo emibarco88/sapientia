@@ -5,7 +5,7 @@ Purpose:
 Service-layer facade for Enterprise Asset Discovery workflows.
 
 The service keeps API routers independent from the discovery engine and
-provides a stable interface for CSV, JSON, and Snowflake discovery.
+provides a stable interface for CSV, JSON, PDF and Snowflake discovery.
 """
 
 from sapientia.engines.enterprise_asset_discovery.enterprise_asset_discovery_engine import (
@@ -30,11 +30,14 @@ class EnterpriseAssetDiscoveryService:
         Discover a CSV enterprise asset.
         """
 
-        return self.discovery_engine.discover_csv(
-            project_id=project_id,
-            file_path=file_path,
-            run_profiling=run_profiling,
-            business_domain=business_domain,
+        return (
+            self.discovery_engine
+            .discover_csv(
+                project_id=project_id,
+                file_path=file_path,
+                run_profiling=run_profiling,
+                business_domain=business_domain,
+            )
         )
 
     def discover_json(
@@ -48,11 +51,41 @@ class EnterpriseAssetDiscoveryService:
         Discover a JSON enterprise asset.
         """
 
-        return self.discovery_engine.discover_json(
-            project_id=project_id,
-            file_path=file_path,
-            run_profiling=run_profiling,
-            business_domain=business_domain,
+        return (
+            self.discovery_engine
+            .discover_json(
+                project_id=project_id,
+                file_path=file_path,
+                run_profiling=run_profiling,
+                business_domain=business_domain,
+            )
+        )
+
+    def discover_pdf(
+        self,
+        project_id: int,
+        file_path: str,
+        run_profiling: bool = True,
+        business_domain: str | None = None,
+    ) -> dict:
+        """
+        Discover a PDF as an Enterprise Asset.
+
+        The PDF is represented as an EKR Core dataset so that the
+        connector can participate in the standard lifecycle.
+
+        Existing document knowledge acquisition may continue to persist
+        the PDF and its chunks into EKR Knowledge.
+        """
+
+        return (
+            self.discovery_engine
+            .discover_pdf(
+                project_id=project_id,
+                file_path=file_path,
+                run_profiling=run_profiling,
+                business_domain=business_domain,
+            )
         )
 
     def discover_snowflake(
@@ -76,9 +109,13 @@ class EnterpriseAssetDiscoveryService:
         """
 
         normalized_table_name = (
-            str(table_name).strip()
+            str(
+                table_name
+            ).strip()
             if table_name is not None
-            and str(table_name).strip()
+            and str(
+                table_name
+            ).strip()
             else None
         )
 
@@ -88,12 +125,23 @@ class EnterpriseAssetDiscoveryService:
             else table_limit
         )
 
-        return self.discovery_engine.discover_snowflake(
-            project_id=project_id,
-            database_name=database_name,
-            schema_name=schema_name,
-            table_name=normalized_table_name,
-            run_profiling=run_profiling,
-            business_domain=business_domain,
-            table_limit=effective_table_limit,
+        return (
+            self.discovery_engine
+            .discover_snowflake(
+                project_id=project_id,
+                database_name=database_name,
+                schema_name=schema_name,
+                table_name=(
+                    normalized_table_name
+                ),
+                run_profiling=(
+                    run_profiling
+                ),
+                business_domain=(
+                    business_domain
+                ),
+                table_limit=(
+                    effective_table_limit
+                ),
+            )
         )

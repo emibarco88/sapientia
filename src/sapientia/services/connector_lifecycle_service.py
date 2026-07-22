@@ -4,17 +4,15 @@ Module: connector_lifecycle_service.py
 Purpose:
 Coordinates the customer-facing Enterprise Connector lifecycle.
 
-Current implemented stages:
+Responsibilities:
 
 1. Asset Discovery scope synchronisation
-2. Enterprise Understanding
+2. Enterprise Understanding orchestration delegation
 3. Enterprise Intelligence readiness
+4. Connector lifecycle status management
 
-Enterprise Understanding performs:
-
-- semantic analysis for each active connector dataset
-- knowledge fusion for each active connector dataset
-- enterprise concept generation for the connector's business domain
+Enterprise Understanding processing is delegated entirely to
+EnterpriseUnderstandingService.
 """
 
 from __future__ import annotations
@@ -22,21 +20,41 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from sapientia.db.connection import get_engine
-
-from sapientia.services.semantic_service import (
-    SemanticService,
-)
-from sapientia.services.knowledge_fusion_service import (
-    KnowledgeFusionService,
-)
-from sapientia.services.enterprise_concept_service import (
-    EnterpriseConceptService,
+from sapientia.services.enterprise_understanding_service import (
+    EnterpriseUnderstandingService,
 )
 
 
 class ConnectorLifecycleService:
+    """
+    Coordinates connector lifecycle stages.
+
+    This service owns:
+
+    - connector validation
+    - active dataset scope
+    - lifecycle status
+    - lifecycle messages
+    - UI lifecycle responses
+
+    It does not directly orchestrate semantic analysis, Knowledge Fusion
+    or Enterprise Concept generation.
+    """
+
+    def __init__(
+        self,
+        enterprise_understanding_service: (
+            EnterpriseUnderstandingService | None
+        ) = None,
+    ) -> None:
+        self.enterprise_understanding_service = (
+            enterprise_understanding_service
+            or EnterpriseUnderstandingService()
+        )
+
     def sync_discovery_scope(
         self,
         connector_id: int,
@@ -46,11 +64,12 @@ class ConnectorLifecycleService:
         Synchronise the connector's active dataset membership with the
         result of the latest successful discovery.
 
-        Previous mappings remain stored but are marked inactive.
+        Previous connector-dataset mappings remain stored but are marked
+        inactive.
         """
 
         dataset_ids = self._extract_dataset_ids(
-            discovery_result
+            discovery_result=discovery_result
         )
 
         engine = get_engine()
@@ -122,6 +141,11 @@ class ConnectorLifecycleService:
                     },
                 )
 
+            discovery_message = (
+                f"{len(dataset_ids)} active "
+                "dataset(s) discovered."
+            )
+
             connection.execute(
                 text("""
                     INSERT INTO
@@ -183,16 +207,19 @@ class ConnectorLifecycleService:
                         connector_id,
 
                     "message":
-                        (
-                            f"{len(dataset_ids)} active "
-                            "dataset(s) discovered."
-                        ),
+                        discovery_message,
                 },
             )
 
         return {
             "connector_id":
                 connector_id,
+
+            "status":
+                "COMPLETED",
+
+            "message":
+                discovery_message,
 
             "active_dataset_ids":
                 dataset_ids,
@@ -207,23 +234,37 @@ class ConnectorLifecycleService:
         refresh_concepts: bool = True,
     ) -> dict[str, Any]:
         """
-        Build Enterprise Understanding for the connector.
+        Build Enterprise Understanding for the connector's active assets.
 
-        Semantic analysis and fusion run only for the connector's active
-        datasets.
+        ConnectorLifecycleService validates the connector scope and
+        maintains lifecycle state.
 
-        Enterprise concepts are generated at business-domain level,
-        because concepts belong to the workspace rather than to a single
-        connector.
+        EnterpriseUnderstandingService owns:
+
+        - semantic analysis
+        - Knowledge Fusion
+        - Enterprise Concept generation
+        - evidence loading
+        - evidence comparison
+        - validation
+        - metric aggregation
         """
 
         context = self._get_connector_context(
             connector_id=connector_id
         )
 
-        project_id = context["project_id"]
-        business_domain = context["domain_code"]
-        dataset_ids = context["dataset_ids"]
+        project_id = context[
+            "project_id"
+        ]
+
+        business_domain = context[
+            "domain_code"
+        ]
+
+        dataset_ids = context[
+            "dataset_ids"
+        ]
 
         if not business_domain:
             raise ValueError(
@@ -242,125 +283,38 @@ class ConnectorLifecycleService:
             connector_id=connector_id,
             status="RUNNING",
             message=(
-                "Analysing semantic meaning, connecting "
-                "enterprise evidence and generating concepts."
+                "Building Enterprise Understanding from "
+                "the connector's active enterprise evidence."
             ),
         )
 
         try:
-            semantic_service = SemanticService()
-
-            fusion_service = (
-                KnowledgeFusionService()
-            )
-
-            concept_service = (
-                EnterpriseConceptService()
-            )
-
-            semantic_results: list[dict[str, Any]] = []
-            fusion_results: list[dict[str, Any]] = []
-
-            total_columns_analysed = 0
-            total_candidate_links = 0
-            total_links_created = 0
-            total_knowledge_items = 0
-
-            for dataset_id in dataset_ids:
-                semantic_result = (
-                    semantic_service
-                    .analyse_dataset(
-                        dataset_id=dataset_id
-                    )
-                )
-
-                semantic_results.append(
-                    semantic_result
-                )
-
-                total_columns_analysed += int(
-                    semantic_result.get(
-                        "columns_analysed"
-                    )
-                    or 0
-                )
-
-                fusion_result = (
-                    fusion_service
-                    .fuse_project(
-                        project_id=project_id,
-                        dataset_id=dataset_id,
-                    )
-                )
-
-                fusion_results.append(
-                    fusion_result
-                )
-
-                total_candidate_links += int(
-                    fusion_result.get(
-                        "candidate_links_evaluated"
-                    )
-                    or 0
-                )
-
-                total_links_created += int(
-                    fusion_result.get(
-                        "links_created"
-                    )
-                    or 0
-                )
-
-                total_knowledge_items += int(
-                    fusion_result.get(
-                        "knowledge_items"
-                    )
-                    or 0
-                )
-
-            concept_result = (
-                concept_service
-                .build_domain_concepts(
-                    project_id=project_id,
-                    business_domain=business_domain,
-                    refresh=refresh_concepts,
+            understanding_result = (
+                self.enterprise_understanding_service
+                .build_understanding(
+                    dataset_ids=dataset_ids,
+                    refresh_concepts=(
+                        refresh_concepts
+                    ),
                 )
             )
 
-            concepts_created = int(
-                concept_result.get(
-                    "concepts_created"
-                )
-                or 0
-            )
-
-            evidence_count = sum(
-                int(
-                    concept.get(
-                        "evidence_count"
-                    )
-                    or 0
-                )
-                for concept in (
-                    concept_result.get(
-                        "concepts"
-                    )
-                    or []
-                )
-            )
-
-            counts = self._get_understanding_counts(
+            self._validate_understanding_result(
                 project_id=project_id,
                 business_domain=business_domain,
-                dataset_ids=dataset_ids,
+                understanding_result=(
+                    understanding_result
+                ),
             )
 
-            message = (
-                "Enterprise Understanding completed: "
-                f"{len(dataset_ids)} dataset(s), "
-                f"{total_columns_analysed} column(s) analysed, "
-                f"{total_links_created} evidence link(s), "
-                f"{concepts_created} enterprise concept(s)."
+            message = str(
+                understanding_result.get(
+                    "message"
+                )
+                or (
+                    "Enterprise Understanding completed "
+                    f"for {len(dataset_ids)} dataset(s)."
+                )
             )
 
             self._set_understanding_status(
@@ -369,70 +323,29 @@ class ConnectorLifecycleService:
                 message=message,
             )
 
-            return {
-                "connector_id":
-                    connector_id,
-
-                "project_id":
-                    project_id,
-
-                "business_domain":
-                    business_domain,
-
-                "status":
-                    "COMPLETED",
-
-                "message":
-                    message,
-
-                "datasets_processed":
-                    len(dataset_ids),
-
-                "dataset_ids":
-                    dataset_ids,
-
-                "columns_analysed":
-                    total_columns_analysed,
-
-                "semantic_columns":
-                    counts["semantic_columns"],
-
-                "knowledge_items_considered":
-                    total_knowledge_items,
-
-                "candidate_links_evaluated":
-                    total_candidate_links,
-
-                "evidence_links_created":
-                    total_links_created,
-
-                "persisted_intelligence_links":
-                    counts["intelligence_links"],
-
-                "concepts_created":
-                    concepts_created,
-
-                "persisted_concepts":
-                    counts["enterprise_concepts"],
-
-                "concept_evidence":
-                    evidence_count,
-
-                "semantic_results":
-                    semantic_results,
-
-                "fusion_results":
-                    fusion_results,
-
-                "concept_result":
-                    concept_result,
-            }
+            return (
+                self
+                ._build_understanding_response(
+                    connector_id=connector_id,
+                    project_id=project_id,
+                    business_domain=(
+                        business_domain
+                    ),
+                    dataset_ids=dataset_ids,
+                    understanding_result=(
+                        understanding_result
+                    ),
+                    message=message,
+                )
+            )
 
         except Exception as exc:
             self._set_understanding_status(
                 connector_id=connector_id,
                 status="FAILED",
-                message=str(exc),
+                message=self._safe_error_message(
+                    exc
+                ),
             )
 
             raise
@@ -456,6 +369,7 @@ class ConnectorLifecycleService:
                         c.connector_status,
                         c.last_tested_at,
                         c.last_discovered_at,
+                        c.project_id,
 
                         bd.domain_code,
                         bd.domain_name
@@ -513,26 +427,31 @@ class ConnectorLifecycleService:
                 text("""
                     SELECT
                         COUNT(
-                            DISTINCT cd.dataset_id
+                            DISTINCT
+                            cd.dataset_id
                         ) AS active_datasets,
 
                         COUNT(
-                            DISTINCT col.column_id
+                            DISTINCT
+                            col.column_id
                         ) AS active_columns,
 
                         COUNT(
-                            DISTINCT cs.column_semantic_id
+                            DISTINCT
+                            cs.column_semantic_id
                         ) AS semantic_columns,
 
                         COUNT(
-                            DISTINCT il.intelligence_link_id
-                        ) AS intelligence_links
+                            DISTINCT
+                            kal.knowledge_asset_link_id
+                        ) AS knowledge_links
 
                     FROM
                         ekr_connection
                         .connector_dataset cd
 
-                    LEFT JOIN ekr_core."column" col
+                    LEFT JOIN
+                        ekr_core."column" col
                       ON col.dataset_id =
                          cd.dataset_id
 
@@ -542,8 +461,9 @@ class ConnectorLifecycleService:
                          col.column_id
 
                     LEFT JOIN
-                        ekr_knowledge.intelligence_link il
-                      ON il.dataset_id =
+                        ekr_knowledge
+                        .knowledge_asset_link kal
+                      ON kal.dataset_id =
                          cd.dataset_id
 
                     WHERE cd.connector_id =
@@ -557,49 +477,31 @@ class ConnectorLifecycleService:
                 },
             ).mappings().one()
 
-            concept_count = 0
-
-            if connector["domain_code"]:
-                concept_count = int(
-                    connection.execute(
-                        text("""
-                            SELECT COUNT(
-                                DISTINCT
-                                ec.enterprise_concept_id
-                            )
-
-                            FROM
-                                ekr_intelligence
-                                .enterprise_concept ec
-
-                            JOIN
-                                ekr_business
-                                .business_domain bd
-                              ON bd.business_domain_id =
-                                 ec.business_domain_id
-
-                            WHERE UPPER(
-                                bd.domain_code
-                            ) = UPPER(
-                                :domain_code
-                            )
-                        """),
-                        {
-                            "domain_code":
-                                connector[
-                                    "domain_code"
-                                ],
-                        },
-                    ).scalar_one()
-                    or 0
+            enterprise_concepts = (
+                self
+                ._get_enterprise_concept_count(
+                    connection=connection,
+                    project_id=int(
+                        connector[
+                            "project_id"
+                        ]
+                    ),
+                    business_domain=(
+                        connector[
+                            "domain_code"
+                        ]
+                    ),
                 )
+            )
 
         state_dict = dict(
             state or {}
         )
 
         connector_status = (
-            connector["connector_status"]
+            connector[
+                "connector_status"
+            ]
             or "CONFIGURED"
         )
 
@@ -610,21 +512,36 @@ class ConnectorLifecycleService:
             else connector_status
         )
 
+        knowledge_links = int(
+            counts[
+                "knowledge_links"
+            ]
+            or 0
+        )
+
         return {
             "connector_id":
-                connector["connector_id"],
+                connector[
+                    "connector_id"
+                ],
 
             "connector_name":
-                connector["connector_name"],
+                connector[
+                    "connector_name"
+                ],
 
             "connector_status":
                 connector_status,
 
             "domain_code":
-                connector["domain_code"],
+                connector[
+                    "domain_code"
+                ],
 
             "domain_name":
-                connector["domain_name"],
+                connector[
+                    "domain_name"
+                ],
 
             "connection": {
                 "status":
@@ -649,12 +566,14 @@ class ConnectorLifecycleService:
                     ),
 
                 "last_completed_at":
-                    state_dict.get(
-                        "last_discovered_at"
-                    )
-                    or connector[
-                        "last_discovered_at"
-                    ],
+                    (
+                        state_dict.get(
+                            "last_discovered_at"
+                        )
+                        or connector[
+                            "last_discovered_at"
+                        ]
+                    ),
 
                 "datasets":
                     int(
@@ -698,16 +617,17 @@ class ConnectorLifecycleService:
                         or 0
                     ),
 
+                "knowledge_links":
+                    knowledge_links,
+
+                # Compatibility alias used by the existing UI.
+                # This can be removed after the UI adopts the
+                # knowledge_links field.
                 "intelligence_links":
-                    int(
-                        counts[
-                            "intelligence_links"
-                        ]
-                        or 0
-                    ),
+                    knowledge_links,
 
                 "enterprise_concepts":
-                    concept_count,
+                    enterprise_concepts,
             },
 
             "intelligence": {
@@ -733,6 +653,10 @@ class ConnectorLifecycleService:
         self,
         connector_id: int,
     ) -> dict[str, Any]:
+        """
+        Return the connector project, domain and active dataset scope.
+        """
+
         engine = get_engine()
 
         with engine.begin() as connection:
@@ -766,7 +690,8 @@ class ConnectorLifecycleService:
 
             rows = connection.execute(
                 text("""
-                    SELECT dataset_id
+                    SELECT
+                        dataset_id
 
                     FROM
                         ekr_connection
@@ -788,126 +713,265 @@ class ConnectorLifecycleService:
         return {
             "project_id":
                 int(
-                    connector["project_id"]
+                    connector[
+                        "project_id"
+                    ]
                 ),
 
             "domain_code":
-                connector["domain_code"],
-
-            "dataset_ids":
-                [
-                    int(row["dataset_id"])
-                    for row in rows
+                connector[
+                    "domain_code"
                 ],
+
+            "dataset_ids": [
+                int(
+                    row[
+                        "dataset_id"
+                    ]
+                )
+                for row in rows
+            ],
         }
 
-    def _get_understanding_counts(
+    def _validate_understanding_result(
         self,
         project_id: int,
         business_domain: str,
+        understanding_result: dict[str, Any],
+    ) -> None:
+        """
+        Ensure the Enterprise Understanding result belongs to the same
+        connector project and domain.
+        """
+
+        result_project_id = int(
+            understanding_result.get(
+                "project_id"
+            )
+            or project_id
+        )
+
+        result_business_domain = str(
+            understanding_result.get(
+                "business_domain"
+            )
+            or business_domain
+        )
+
+        if result_project_id != project_id:
+            raise RuntimeError(
+                "Enterprise Understanding returned a "
+                "different project_id from the connector."
+            )
+
+        if (
+            result_business_domain.upper()
+            != business_domain.upper()
+        ):
+            raise RuntimeError(
+                "Enterprise Understanding returned a "
+                "different business domain from the "
+                "connector."
+            )
+
+        result_status = str(
+            understanding_result.get(
+                "status"
+            )
+            or "COMPLETED"
+        ).upper()
+
+        if result_status != "COMPLETED":
+            raise RuntimeError(
+                "Enterprise Understanding did not "
+                "complete successfully. Returned status: "
+                f"{result_status}."
+            )
+
+    def _build_understanding_response(
+        self,
+        connector_id: int,
+        project_id: int,
+        business_domain: str,
         dataset_ids: list[int],
-    ) -> dict[str, int]:
-        engine = get_engine()
+        understanding_result: dict[str, Any],
+        message: str,
+    ) -> dict[str, Any]:
+        """
+        Add connector context and temporary UI compatibility aliases to
+        the canonical Enterprise Understanding result.
+        """
 
-        with engine.begin() as connection:
-            semantic_columns = int(
-                connection.execute(
-                    text("""
-                        SELECT COUNT(
-                            DISTINCT
-                            cs.column_semantic_id
-                        )
+        response = dict(
+            understanding_result
+        )
 
-                        FROM
-                            ekr_semantic
-                            .column_semantic cs
-
-                        JOIN ekr_core."column" c
-                          ON c.column_id =
-                             cs.column_id
-
-                        WHERE c.dataset_id =
-                              ANY(:dataset_ids)
-                    """),
-                    {
-                        "dataset_ids":
-                            dataset_ids,
-                    },
-                ).scalar_one()
-                or 0
+        evidence_after = dict(
+            understanding_result.get(
+                "evidence_after"
             )
+            or {}
+        )
 
-            intelligence_links = int(
-                connection.execute(
-                    text("""
-                        SELECT COUNT(
-                            DISTINCT
-                            il.intelligence_link_id
-                        )
-
-                        FROM
-                            ekr_knowledge
-                            .intelligence_link il
-
-                        WHERE il.dataset_id =
-                              ANY(:dataset_ids)
-                    """),
-                    {
-                        "dataset_ids":
-                            dataset_ids,
-                    },
-                ).scalar_one()
-                or 0
+        stage_results = dict(
+            understanding_result.get(
+                "stage_results"
             )
+            or {}
+        )
 
-            enterprise_concepts = int(
-                connection.execute(
-                    text("""
-                        SELECT COUNT(
+        concept_result = dict(
+            stage_results.get(
+                "concepts"
+            )
+            or {}
+        )
+
+        semantic_columns = int(
+            evidence_after.get(
+                "semantic_columns"
+            )
+            or 0
+        )
+
+        knowledge_links_after = int(
+            understanding_result.get(
+                "knowledge_links_after"
+            )
+            or evidence_after.get(
+                "knowledge_links"
+            )
+            or 0
+        )
+
+        persisted_concepts = int(
+            concept_result.get(
+                "persisted_concepts"
+            )
+            or concept_result.get(
+                "concepts_created"
+            )
+            or understanding_result.get(
+                "concepts_created"
+            )
+            or 0
+        )
+
+        response.update({
+            "connector_id":
+                connector_id,
+
+            "project_id":
+                project_id,
+
+            "business_domain":
+                business_domain,
+
+            "status":
+                "COMPLETED",
+
+            "message":
+                message,
+
+            "dataset_ids":
+                list(
+                    dataset_ids
+                ),
+
+            "datasets_processed":
+                int(
+                    understanding_result.get(
+                        "datasets_processed"
+                    )
+                    or len(
+                        dataset_ids
+                    )
+                ),
+
+            # Compatibility fields currently expected by
+            # ConnectorLifecycle.tsx.
+            "semantic_columns":
+                semantic_columns,
+
+            "evidence_links_created":
+                int(
+                    understanding_result.get(
+                        "knowledge_links_created"
+                    )
+                    or 0
+                ),
+
+            "persisted_intelligence_links":
+                knowledge_links_after,
+
+            "persisted_knowledge_links":
+                knowledge_links_after,
+
+            "persisted_concepts":
+                persisted_concepts,
+
+            "concept_evidence":
+                int(
+                    understanding_result.get(
+                        "concept_evidence_created"
+                    )
+                    or 0
+                ),
+        })
+
+        return response
+
+    def _get_enterprise_concept_count(
+        self,
+        connection: Connection,
+        project_id: int,
+        business_domain: str | None,
+    ) -> int:
+        """
+        Return persisted Enterprise Concept count for the project domain.
+        """
+
+        if not business_domain:
+            return 0
+
+        return int(
+            connection.execute(
+                text("""
+                    SELECT
+                        COUNT(
                             DISTINCT
                             ec.enterprise_concept_id
                         )
 
-                        FROM
-                            ekr_intelligence
-                            .enterprise_concept ec
+                    FROM
+                        ekr_intelligence
+                        .enterprise_concept ec
 
-                        JOIN
-                            ekr_business
-                            .business_domain bd
-                          ON bd.business_domain_id =
-                             ec.business_domain_id
+                    JOIN
+                        ekr_business
+                        .business_domain bd
+                      ON bd.business_domain_id =
+                         ec.business_domain_id
 
-                        WHERE ec.project_id =
-                              :project_id
+                    WHERE ec.project_id =
+                          :project_id
 
-                          AND UPPER(
-                              bd.domain_code
-                          ) = UPPER(
-                              :business_domain
-                          )
-                    """),
-                    {
-                        "project_id":
-                            project_id,
+                      AND UPPER(
+                          bd.domain_code
+                      ) = UPPER(
+                          :business_domain
+                      )
+                """),
+                {
+                    "project_id":
+                        project_id,
 
-                        "business_domain":
-                            business_domain,
-                    },
-                ).scalar_one()
-                or 0
-            )
-
-        return {
-            "semantic_columns":
-                semantic_columns,
-
-            "intelligence_links":
-                intelligence_links,
-
-            "enterprise_concepts":
-                enterprise_concepts,
-        }
+                    "business_domain":
+                        business_domain,
+                },
+            ).scalar_one()
+            or 0
+        )
 
     def _set_understanding_status(
         self,
@@ -915,6 +979,23 @@ class ConnectorLifecycleService:
         status: str,
         message: str,
     ) -> None:
+        """
+        Create or update the connector Enterprise Understanding status.
+        """
+
+        supported_statuses = {
+            "PENDING",
+            "RUNNING",
+            "COMPLETED",
+            "FAILED",
+        }
+
+        if status not in supported_statuses:
+            raise ValueError(
+                "Unsupported understanding status: "
+                f"{status}"
+            )
+
         engine = get_engine()
 
         with engine.begin() as connection:
@@ -1004,14 +1085,20 @@ class ConnectorLifecycleService:
 
     def _assert_connector_exists(
         self,
-        connection,
+        connection: Connection,
         connector_id: int,
     ) -> None:
+        """
+        Validate that the connector exists.
+        """
+
         exists = connection.execute(
             text("""
-                SELECT 1
+                SELECT
+                    1
 
-                FROM ekr_connection.connector
+                FROM
+                    ekr_connection.connector
 
                 WHERE connector_id =
                       :connector_id
@@ -1031,6 +1118,11 @@ class ConnectorLifecycleService:
         self,
         discovery_result: dict[str, Any],
     ) -> list[int]:
+        """
+        Extract unique dataset identifiers from supported discovery
+        result structures.
+        """
+
         dataset_ids: list[int] = []
 
         dataset_id = discovery_result.get(
@@ -1039,7 +1131,9 @@ class ConnectorLifecycleService:
 
         if dataset_id:
             dataset_ids.append(
-                int(dataset_id)
+                int(
+                    dataset_id
+                )
             )
 
         parent_dataset_id = (
@@ -1050,10 +1144,12 @@ class ConnectorLifecycleService:
 
         if parent_dataset_id:
             dataset_ids.append(
-                int(parent_dataset_id)
+                int(
+                    parent_dataset_id
+                )
             )
 
-        for asset in (
+        assets = (
             discovery_result.get(
                 "discovered_assets"
             )
@@ -1061,14 +1157,18 @@ class ConnectorLifecycleService:
                 "assets"
             )
             or []
-        ):
+        )
+
+        for asset in assets:
             asset_dataset_id = asset.get(
                 "dataset_id"
             )
 
             if asset_dataset_id:
                 dataset_ids.append(
-                    int(asset_dataset_id)
+                    int(
+                        asset_dataset_id
+                    )
                 )
 
         return list(
@@ -1076,3 +1176,23 @@ class ConnectorLifecycleService:
                 dataset_ids
             )
         )
+
+    @staticmethod
+    def _safe_error_message(
+        exc: Exception,
+    ) -> str:
+        """
+        Return a lifecycle-safe error message.
+        """
+
+        message = str(
+            exc
+        ).strip()
+
+        if not message:
+            return (
+                "Enterprise Understanding failed "
+                "with an unexpected error."
+            )
+
+        return message[:2000]

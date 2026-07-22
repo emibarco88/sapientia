@@ -20,6 +20,9 @@ from sapientia.services.runtime_config_service import (
 
 from sapientia.connectors.csv.csv_connector import CSVConnector
 from sapientia.connectors.json.json_connector import JSONConnector
+from sapientia.connectors.pdf.pdf_connector import (
+    PDFConnector,
+)
 from sapientia.connectors.database.snowflake.snowflake_connector import (
     SnowflakeConnector,
 )
@@ -489,6 +492,204 @@ class EnterpriseAssetDiscoveryEngine:
             "profiled":
                 run_profiling,
         }
+
+    def discover_pdf(
+            self,
+            project_id: int,
+            file_path: str,
+            run_profiling: bool = True,
+            business_domain: str | None = None,
+        ) -> dict:
+            """
+            Discover a PDF as an Enterprise Asset.
+
+            The PDF is represented in EKR Core as one dataset containing
+            extracted document chunks.
+
+            The existing Knowledge Acquisition flow may separately persist
+            the same source file into ekr_knowledge.document and
+            ekr_knowledge.document_chunk.
+            """
+
+            connector = PDFConnector()
+
+            dataset_metadata = (
+                connector.extract_schema(
+                    file_path
+                )
+            )
+
+            profile_records: list[dict] = []
+
+            if run_profiling:
+                profile_records = (
+                    connector.extract_records(
+                        source=file_path,
+                        limit=self.profiling_config[
+                            "SAMPLE_SIZE"
+                        ],
+                    )
+                )
+
+            engine = get_engine()
+
+            with engine.begin() as connection:
+                business_domain_repo = (
+                    BusinessDomainRepository(
+                        connection
+                    )
+                )
+
+                business_domain_id = (
+                    business_domain_repo
+                    .get_business_domain_id(
+                        business_domain
+                    )
+                )
+
+                source_repo = (
+                    SourceSystemRepository(
+                        connection
+                    )
+                )
+
+                dataset_repo = (
+                    DatasetRepository(
+                        connection
+                    )
+                )
+
+                column_repo = (
+                    ColumnRepository(
+                        connection
+                    )
+                )
+
+                source_system_id = (
+                    source_repo.create_or_get(
+                        project_id=project_id,
+
+                        name=(
+                            "PDF Source - "
+                            f"{dataset_metadata.name}"
+                        ),
+
+                        source_type="PDF",
+
+                        description=(
+                            "PDF document discovered by "
+                            "Sapientia Enterprise Asset "
+                            "Discovery Engine"
+                        ),
+                    )
+                )
+
+                dataset_id = (
+                    dataset_repo.create_or_update(
+                        source_system_id=(
+                            source_system_id
+                        ),
+
+                        business_domain_id=(
+                            business_domain_id
+                        ),
+
+                        name=(
+                            dataset_metadata.name
+                        ),
+
+                        object_type=(
+                            dataset_metadata
+                            .object_type
+                        ),
+
+                        location=(
+                            dataset_metadata.location
+                        ),
+
+                        row_count=(
+                            dataset_metadata.row_count
+                        ),
+
+                        column_count=(
+                            dataset_metadata
+                            .column_count
+                        ),
+
+                        file_size_bytes=(
+                            dataset_metadata
+                            .file_size_bytes
+                        ),
+                    )
+                )
+
+                column_repo.refresh_columns(
+                    dataset_id=dataset_id,
+                    columns=(
+                        dataset_metadata.columns
+                    ),
+                )
+
+                if run_profiling:
+                    (
+                        self
+                        .enterprise_profiling_engine
+                        .profile_asset(
+                            dataset_id=dataset_id,
+                            records=profile_records,
+                            connection=connection,
+                        )
+                    )
+
+            return {
+                "source_system_id":
+                    source_system_id,
+
+                "dataset_id":
+                    dataset_id,
+
+                "enterprise_asset_type":
+                    "PDF_DOCUMENT",
+
+                "source_type":
+                    "PDF",
+
+                "business_domain":
+                    business_domain
+                    or "UNKNOWN",
+
+                "business_domain_id":
+                    business_domain_id,
+
+                "document_name":
+                    dataset_metadata.name,
+
+                "location":
+                    dataset_metadata.location,
+
+                "chunks_discovered":
+                    dataset_metadata.row_count,
+
+                "columns_refreshed":
+                    len(
+                        dataset_metadata.columns
+                    ),
+
+                "profiled_records":
+                    len(profile_records),
+
+                "profile_record_limit":
+                    (
+                        self.profiling_config[
+                            "SAMPLE_SIZE"
+                        ]
+                        if run_profiling
+                        else 0
+                    ),
+
+                "profiled":
+                    run_profiling,
+            }
 
     def discover_snowflake(
         self,
