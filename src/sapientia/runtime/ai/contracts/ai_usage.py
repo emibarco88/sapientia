@@ -1,9 +1,5 @@
 """
-Module: ai_usage.py
-
-Purpose:
-Defines provider-independent token usage and cost information for an
-AI execution.
+Provider-independent token usage and cost information.
 """
 
 from __future__ import annotations
@@ -16,10 +12,7 @@ from typing import Any
 @dataclass(slots=True)
 class AIUsage:
     """
-    Provider-independent AI usage information.
-
-    Token counts and provider-reported cost values can be populated after
-    an AI provider completes a request.
+    Describes token consumption and estimated cost for an AI execution.
     """
 
     input_tokens: int = 0
@@ -34,27 +27,23 @@ class AIUsage:
 
     def __post_init__(self) -> None:
         """
-        Validate token counts and calculate total tokens when omitted.
+        Validate token and cost information.
         """
 
         token_fields = {
-            "input_tokens":
-                self.input_tokens,
-
-            "output_tokens":
-                self.output_tokens,
-
-            "total_tokens":
-                self.total_tokens,
-
-            "cached_input_tokens":
-                self.cached_input_tokens,
-
-            "reasoning_tokens":
-                self.reasoning_tokens,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+            "reasoning_tokens": self.reasoning_tokens,
         }
 
         for field_name, value in token_fields.items():
+            if not isinstance(value, int):
+                raise TypeError(
+                    f"{field_name} must be an integer."
+                )
+
             if value < 0:
                 raise ValueError(
                     f"{field_name} cannot be negative."
@@ -70,18 +59,14 @@ class AIUsage:
 
         elif (
             calculated_total > 0
-            and self.total_tokens
-            != calculated_total
+            and self.total_tokens != calculated_total
         ):
             raise ValueError(
                 "total_tokens must equal input_tokens "
                 "plus output_tokens."
             )
 
-        if (
-            self.cached_input_tokens
-            > self.input_tokens
-        ):
+        if self.cached_input_tokens > self.input_tokens:
             raise ValueError(
                 "cached_input_tokens cannot exceed "
                 "input_tokens."
@@ -106,31 +91,19 @@ class AIUsage:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Return an API-safe representation.
+        Return an API-safe dictionary representation.
         """
 
         return {
-            "input_tokens":
-                self.input_tokens,
-
-            "output_tokens":
-                self.output_tokens,
-
-            "total_tokens":
-                self.total_tokens,
-
-            "cached_input_tokens":
-                self.cached_input_tokens,
-
-            "reasoning_tokens":
-                self.reasoning_tokens,
-
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+            "reasoning_tokens": self.reasoning_tokens,
             "estimated_cost": (
                 str(self.estimated_cost)
                 if self.estimated_cost is not None
                 else None
             ),
-
-            "currency":
-                self.currency,
+            "currency": self.currency,
         }

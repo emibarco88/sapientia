@@ -1,14 +1,8 @@
 """
-Module: ai_execution_context.py
+Provider-independent runtime context for Sapientia AI executions.
 
-Purpose:
-Defines execution metadata associated with an AI request.
-
-AIExecutionContext provides traceability between an AI execution and
-the Sapientia project, business domain, workflow and user operation
-that initiated it.
-
-The class contains no provider-specific behaviour.
+The runtime context provides business traceability and technical
+execution metadata for requests processed by the AI Runtime.
 """
 
 from __future__ import annotations
@@ -20,21 +14,14 @@ from uuid import uuid4
 
 
 @dataclass(slots=True)
-class AIExecutionContext:
+class AIRuntimeContext:
     """
-    Metadata describing the business and technical context of an AI call.
+    Describes the context in which an AI request is executed.
 
-    The context is created before execution and travels with the request
-    through the AI Runtime.
+    This object travels with an AI request through the runtime, driver,
+    retry, logging and observability layers.
 
     Attributes:
-        execution_id:
-            Unique identifier for this AI execution.
-
-        correlation_id:
-            Identifier used to correlate the execution with a broader
-            business process, API request or workflow.
-
         project_id:
             Sapientia project identifier.
 
@@ -42,23 +29,29 @@ class AIExecutionContext:
             Business domain associated with the request.
 
         capability:
-            Sapientia capability initiating the request, such as
+            Sapientia capability initiating the execution, such as
             ENTERPRISE_ASSESSMENT or AI_ADVISOR.
 
         operation:
-            Specific operation being executed.
+            Specific operation being performed.
+
+        execution_id:
+            Unique identifier for this individual AI execution.
+
+        correlation_id:
+            Identifier used to group related platform operations.
 
         initiated_by:
-            Optional user, service or process identifier.
+            Optional user, service or process that initiated the request.
 
         workflow_id:
             Optional identifier for a broader Sapientia workflow.
 
         created_at:
-            UTC time when the execution context was created.
+            UTC timestamp when the runtime context was created.
 
         metadata:
-            Additional serialisable execution metadata.
+            Additional serialisable context metadata.
     """
 
     project_id: int
@@ -78,9 +71,7 @@ class AIExecutionContext:
     workflow_id: str | None = None
 
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(
-            timezone.utc
-        )
+        default_factory=lambda: datetime.now(timezone.utc)
     )
 
     metadata: dict[str, Any] = field(
@@ -89,8 +80,13 @@ class AIExecutionContext:
 
     def __post_init__(self) -> None:
         """
-        Normalise and validate execution context values.
+        Normalise and validate the runtime context.
         """
+
+        if not isinstance(self.project_id, int):
+            raise TypeError(
+                "project_id must be an integer."
+            )
 
         if self.project_id <= 0:
             raise ValueError(
@@ -98,15 +94,18 @@ class AIExecutionContext:
             )
 
         self.business_domain = self._normalise_upper(
-            self.business_domain
+            self.business_domain,
+            "business_domain",
         )
 
         self.capability = self._normalise_upper(
-            self.capability
+            self.capability,
+            "capability",
         )
 
         self.operation = self._normalise_upper(
-            self.operation
+            self.operation,
+            "operation",
         )
 
         self.execution_id = self._normalise_required(
@@ -131,6 +130,11 @@ class AIExecutionContext:
                 or None
             )
 
+        if not isinstance(self.created_at, datetime):
+            raise TypeError(
+                "created_at must be a datetime."
+            )
+
         if self.created_at.tzinfo is None:
             raise ValueError(
                 "created_at must be timezone-aware."
@@ -146,40 +150,22 @@ class AIExecutionContext:
         """
 
         return {
-            "execution_id":
-                self.execution_id,
-
-            "correlation_id":
-                self.correlation_id,
-
-            "project_id":
-                self.project_id,
-
-            "business_domain":
-                self.business_domain,
-
-            "capability":
-                self.capability,
-
-            "operation":
-                self.operation,
-
-            "initiated_by":
-                self.initiated_by,
-
-            "workflow_id":
-                self.workflow_id,
-
-            "created_at":
-                self.created_at.isoformat(),
-
-            "metadata":
-                dict(self.metadata),
+            "execution_id": self.execution_id,
+            "correlation_id": self.correlation_id,
+            "project_id": self.project_id,
+            "business_domain": self.business_domain,
+            "capability": self.capability,
+            "operation": self.operation,
+            "initiated_by": self.initiated_by,
+            "workflow_id": self.workflow_id,
+            "created_at": self.created_at.isoformat(),
+            "metadata": dict(self.metadata),
         }
 
     @staticmethod
     def _normalise_upper(
         value: str,
+        field_name: str,
     ) -> str:
         normalised = str(
             value or ""
@@ -187,7 +173,7 @@ class AIExecutionContext:
 
         if not normalised:
             raise ValueError(
-                "Execution context values cannot be empty."
+                f"{field_name} cannot be empty."
             )
 
         return normalised

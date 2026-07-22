@@ -1,0 +1,3 @@
+"""
+Shared Sapientia runtime infrastructure.
+"""

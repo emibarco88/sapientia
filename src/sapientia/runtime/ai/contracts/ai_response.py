@@ -1,9 +1,5 @@
 """
-Module: ai_response.py
-
-Purpose:
-Defines the provider-independent response returned by the Sapientia
-AI Runtime.
+Provider-independent AI response contract.
 """
 
 from __future__ import annotations
@@ -12,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from sapientia.ai.runtime.ai_usage import (
+from sapientia.runtime.ai.contracts.ai_usage import (
     AIUsage,
 )
 
@@ -20,14 +16,14 @@ from sapientia.ai.runtime.ai_usage import (
 @dataclass(slots=True)
 class AIResponse:
     """
-    Provider-independent response returned by the AI Runtime.
+    Response returned by the Sapientia AI Runtime.
 
-    The response retains both the generated content and the information
-    needed for traceability, observability and future cost management.
+    The response retains generated content together with usage,
+    traceability, latency and provider metadata.
     """
 
     execution_id: str
-    provider: str
+    driver: str
     model: str
     content: str
 
@@ -36,12 +32,10 @@ class AIResponse:
     )
 
     finish_reason: str | None = None
-    provider_request_id: str | None = None
+    external_request_id: str | None = None
 
     created_at: datetime = field(
-        default_factory=lambda: datetime.now(
-            timezone.utc
-        )
+        default_factory=lambda: datetime.now(timezone.utc)
     )
 
     latency_ms: int | None = None
@@ -70,13 +64,13 @@ class AIResponse:
                 "execution_id cannot be empty."
             )
 
-        self.provider = str(
-            self.provider or ""
+        self.driver = str(
+            self.driver or ""
         ).strip().upper()
 
-        if not self.provider:
+        if not self.driver:
             raise ValueError(
-                "provider cannot be empty."
+                "driver cannot be empty."
             )
 
         self.model = str(
@@ -111,12 +105,15 @@ class AIResponse:
                 or None
             )
 
-        if self.provider_request_id is not None:
-            self.provider_request_id = (
-                str(
-                    self.provider_request_id
-                ).strip()
+        if self.external_request_id is not None:
+            self.external_request_id = (
+                str(self.external_request_id).strip()
                 or None
+            )
+
+        if not isinstance(self.created_at, datetime):
+            raise TypeError(
+                "created_at must be a datetime."
             )
 
         if self.created_at.tzinfo is None:
@@ -124,13 +121,16 @@ class AIResponse:
                 "created_at must be timezone-aware."
             )
 
-        if (
-            self.latency_ms is not None
-            and self.latency_ms < 0
-        ):
-            raise ValueError(
-                "latency_ms cannot be negative."
-            )
+        if self.latency_ms is not None:
+            if not isinstance(self.latency_ms, int):
+                raise TypeError(
+                    "latency_ms must be an integer."
+                )
+
+            if self.latency_ms < 0:
+                raise ValueError(
+                    "latency_ms cannot be negative."
+                )
 
         self.metadata = dict(
             self.metadata or {}
@@ -138,9 +138,7 @@ class AIResponse:
 
         self.warnings = [
             str(warning).strip()
-            for warning in (
-                self.warnings or []
-            )
+            for warning in self.warnings or []
             if str(warning).strip()
         ]
 
@@ -154,46 +152,21 @@ class AIResponse:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Return an API-safe response representation.
+        Return an API-safe dictionary representation.
         """
 
         return {
-            "execution_id":
-                self.execution_id,
-
-            "provider":
-                self.provider,
-
-            "model":
-                self.model,
-
-            "content":
-                self.content,
-
-            "parsed_content":
-                self.parsed_content,
-
-            "has_parsed_content":
-                self.has_parsed_content,
-
-            "usage":
-                self.usage.to_dict(),
-
-            "finish_reason":
-                self.finish_reason,
-
-            "provider_request_id":
-                self.provider_request_id,
-
-            "created_at":
-                self.created_at.isoformat(),
-
-            "latency_ms":
-                self.latency_ms,
-
-            "metadata":
-                dict(self.metadata),
-
-            "warnings":
-                list(self.warnings),
+            "execution_id": self.execution_id,
+            "driver": self.driver,
+            "model": self.model,
+            "content": self.content,
+            "parsed_content": self.parsed_content,
+            "has_parsed_content": self.has_parsed_content,
+            "usage": self.usage.to_dict(),
+            "finish_reason": self.finish_reason,
+            "external_request_id": self.external_request_id,
+            "created_at": self.created_at.isoformat(),
+            "latency_ms": self.latency_ms,
+            "metadata": dict(self.metadata),
+            "warnings": list(self.warnings),
         }
