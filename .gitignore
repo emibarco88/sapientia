@@ -29,3 +29,22 @@ venv/
 dist/
 build/
 *.zip
+
+
+
+# Generated archives
+*.zip
+*.tar
+*.tar.gz
+
+# macOS
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+
+# Node
+node_modules/
+.next/
+dist/
