@@ -6,11 +6,7 @@ Creates the SQLAlchemy database engine for Sapientia.
 """
 
 import os
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
-
-
-load_dotenv()
 
 
 def get_database_url() -> str:

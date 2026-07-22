@@ -19,15 +19,11 @@ import re
 from types import SimpleNamespace
 from typing import Any
 
-from dotenv import load_dotenv
 import snowflake.connector
 
 from sapientia.connectors.database.base_database_connector import (
     BaseDatabaseConnector,
 )
-
-
-load_dotenv()
 
 
 class SnowflakeConnector(BaseDatabaseConnector):

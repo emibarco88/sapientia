@@ -11,7 +11,6 @@ import os
 import time
 from typing import Any
 
-from dotenv import load_dotenv
 
 from sapientia.engines.enterprise_ai.exceptions import (
     AIProviderConfigurationError,
@@ -24,9 +23,6 @@ from sapientia.engines.enterprise_ai.models import (
 from sapientia.engines.enterprise_ai.providers.base import (
     AIProvider,
 )
-
-
-load_dotenv()
 
 
 class OpenAIProvider(AIProvider):

@@ -7,11 +7,7 @@ Thin OpenAI client wrapper used by Sapientia AI Advisor.
 
 import os
 
-from dotenv import load_dotenv
 from openai import OpenAI
-
-
-load_dotenv()
 
 
 class SapientiaOpenAIClient:
