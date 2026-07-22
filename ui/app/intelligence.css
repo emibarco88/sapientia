@@ -1,0 +1,83 @@
+/* Milestone 4 — Enterprise Intelligence */
+.intelligence-page { gap:28px; }
+.intelligence-page-header { align-items:center; }
+.enterprise-header-area-note { color:var(--sap-text-faint); font-size:11px; font-weight:600; }
+.intelligence-error { display:flex; align-items:center; gap:10px; }
+.intelligence-error button { margin-left:auto; border:0; background:transparent; color:var(--sap-primary); cursor:pointer; font-weight:650; }
+.intelligence-loading-state { display:flex; min-height:190px; align-items:center; justify-content:center; gap:15px; border:1px solid var(--sap-border); border-radius:var(--sap-radius-lg); background:var(--sap-surface); }
+.intelligence-loading-mark { display:grid; width:46px; height:46px; place-items:center; border-radius:14px; background:var(--sap-primary-soft); color:var(--sap-primary); }
+.intelligence-loading-state strong,.intelligence-loading-state span { display:block; }
+.intelligence-loading-state span { margin-top:5px; color:var(--sap-text-soft); font-size:13px; }
+.intelligence-metric-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+.intelligence-metric-card { display:flex; min-width:0; align-items:center; gap:13px; border:1px solid var(--sap-border); border-radius:16px; background:var(--sap-surface); padding:18px; box-shadow:var(--sap-shadow-sm); }
+.intelligence-metric-card.is-priority { border-color:#f3d4d4; background:linear-gradient(135deg,#fff 0%,#fff7f7 100%); }
+.intelligence-metric-icon { display:grid; width:38px; height:38px; flex:0 0 auto; place-items:center; border-radius:11px; background:var(--sap-primary-soft); color:var(--sap-primary); }
+.intelligence-metric-card.is-priority .intelligence-metric-icon { background:var(--sap-danger-soft); color:var(--sap-danger); }
+.intelligence-metric-card strong,.intelligence-metric-card span { display:block; }
+.intelligence-metric-card strong { color:var(--sap-text); font-size:22px; letter-spacing:-.03em; }
+.intelligence-metric-card div>span { margin-top:2px; color:var(--sap-text-soft); font-size:11px; }
+.intelligence-hero-panel { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:start; gap:18px; border:1px solid #dbe4ff; border-radius:var(--sap-radius-lg); background:linear-gradient(135deg,#fff 0%,#f3f6ff 72%,#eef2ff 100%); padding:26px; box-shadow:var(--sap-shadow-sm); }
+.intelligence-hero-icon { display:grid; width:46px; height:46px; place-items:center; border-radius:14px; background:var(--sap-primary); color:#fff; box-shadow:0 10px 22px rgb(49 87 213 / 18%); }
+.intelligence-hero-copy h2 { margin:2px 0 10px; color:var(--sap-text); font-size:22px; letter-spacing:-.025em; }
+.intelligence-hero-copy>p { max-width:850px; margin:0; color:var(--sap-text-soft); font-size:13px; line-height:1.65; }
+.intelligence-hero-meta { display:flex; flex-wrap:wrap; gap:15px; margin-top:16px; color:var(--sap-text-faint); font-size:11px; }
+.intelligence-hero-meta span { display:inline-flex; align-items:center; gap:6px; }
+.intelligence-hero-link { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--sap-border); border-radius:11px; background:#fff; padding:10px 13px; color:var(--sap-primary); font-size:12px; font-weight:660; text-decoration:none; white-space:nowrap; }
+.intelligence-hero-link:hover { border-color:var(--sap-primary); }
+.intelligence-library-section { display:grid; gap:18px; }
+.intelligence-report-count { border:1px solid var(--sap-border); border-radius:999px; background:var(--sap-surface); padding:7px 11px; color:var(--sap-text-soft); font-size:11px; font-weight:650; }
+.intelligence-report-list { display:grid; gap:11px; }
+.intelligence-report-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:start; gap:15px; border:1px solid var(--sap-border); border-radius:16px; background:var(--sap-surface); padding:19px; color:inherit; text-decoration:none; box-shadow:var(--sap-shadow-sm); transition:150ms ease; }
+.intelligence-report-card:hover { transform:translateY(-1px); border-color:var(--sap-border-strong); box-shadow:var(--sap-shadow-md); }
+.intelligence-report-icon { display:grid; width:39px; height:39px; place-items:center; border-radius:11px; background:var(--sap-primary-soft); color:var(--sap-primary); }
+.intelligence-report-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--sap-text-faint); font-size:10px; font-weight:650; }
+.intelligence-report-meta span { display:inline-flex; align-items:center; gap:5px; }
+.intelligence-report-meta span:first-child { color:var(--sap-primary); letter-spacing:.07em; text-transform:uppercase; }
+.intelligence-report-content h3 { margin:9px 0 6px; color:var(--sap-text); font-size:16px; letter-spacing:-.015em; }
+.intelligence-report-content>p { margin:0; color:var(--sap-text-soft); font-size:12px; line-height:1.58; }
+.intelligence-report-content footer { display:flex; flex-wrap:wrap; gap:13px; margin-top:14px; color:var(--sap-text-faint); font-size:10px; }
+.intelligence-report-content footer span { display:inline-flex; align-items:center; gap:5px; }
+.intelligence-priority-label { color:var(--sap-danger)!important; font-weight:650; }
+.intelligence-report-arrow { align-self:center; color:var(--sap-text-faint); }
+.intelligence-report-card:hover .intelligence-report-arrow { color:var(--sap-primary); transform:translateX(2px); }
+.intelligence-empty-state { display:grid; min-height:220px; place-items:center; align-content:center; border:1px dashed var(--sap-border-strong); border-radius:var(--sap-radius-lg); background:var(--sap-surface-subtle); padding:30px; color:var(--sap-text-faint); text-align:center; }
+.intelligence-empty-state h3 { margin:12px 0 5px; color:var(--sap-text); font-size:17px; }
+.intelligence-empty-state p { max-width:530px; margin:0; color:var(--sap-text-soft); font-size:12px; line-height:1.55; }
+
+.intelligence-detail-page { gap:24px; }
+.intelligence-back-link { display:inline-flex; align-items:center; gap:7px; color:var(--sap-primary); font-size:12px; font-weight:650; text-decoration:none; }
+.intelligence-detail-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; }
+.intelligence-detail-heading h1 { margin:5px 0 8px; color:var(--sap-text); font-size:32px; letter-spacing:-.035em; }
+.intelligence-detail-heading p { margin:0; color:var(--sap-text-soft); font-size:13px; }
+.intelligence-detail-section { display:grid; gap:14px; }
+.intelligence-panel { border:1px solid var(--sap-border); border-radius:var(--sap-radius-lg); background:var(--sap-surface); padding:24px; box-shadow:var(--sap-shadow-sm); }
+.intelligence-panel h2 { margin:0; color:var(--sap-text); font-size:19px; }
+.intelligence-panel-subtitle { margin:6px 0 0; color:var(--sap-text-soft); font-size:12px; }
+.intelligence-narrative { display:grid; grid-template-columns:auto minmax(0,1fr); gap:15px; background:linear-gradient(135deg,#fff 0%,#f5f7ff 100%); }
+.intelligence-narrative p { margin:0; color:var(--sap-text-soft); font-size:14px; line-height:1.72; white-space:pre-wrap; }
+.intelligence-finding-list { display:grid; gap:12px; margin-top:18px; }
+.intelligence-finding-card { overflow:hidden; border:1px solid var(--sap-border); border-radius:15px; background:var(--sap-surface); }
+.intelligence-finding-main { padding:19px; }
+.intelligence-finding-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.intelligence-finding-type { color:var(--sap-primary); font-size:10px; font-weight:740; letter-spacing:.08em; text-transform:uppercase; }
+.intelligence-finding-card h3 { margin:5px 0 0; color:var(--sap-text); font-size:16px; }
+.intelligence-finding-tags { display:flex; flex-wrap:wrap; gap:7px; }
+.intelligence-tag { border-radius:999px; background:var(--sap-surface-strong); padding:5px 8px; color:var(--sap-text-soft); font-size:9px; font-weight:720; text-transform:uppercase; }
+.intelligence-tag.is-high { background:var(--sap-danger-soft); color:var(--sap-danger); }
+.intelligence-finding-description { margin:13px 0 0; color:var(--sap-text-soft); font-size:12px; line-height:1.62; }
+.intelligence-interpretation { margin-top:13px; border:1px solid #dbe4ff; border-radius:11px; background:var(--sap-primary-soft); padding:13px; color:#29478f; font-size:12px; line-height:1.58; }
+.intelligence-evidence-button { display:inline-flex; align-items:center; gap:7px; margin-top:14px; border:1px solid var(--sap-border); border-radius:10px; background:#fff; padding:8px 11px; color:var(--sap-text-soft); cursor:pointer; font-size:11px; font-weight:650; }
+.intelligence-evidence-button:hover { border-color:var(--sap-primary); color:var(--sap-primary); }
+.intelligence-evidence-list { display:grid; gap:9px; border-top:1px solid var(--sap-border); background:var(--sap-surface-subtle); padding:15px 19px; }
+.intelligence-evidence-item { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:11px; border:1px solid var(--sap-border); border-radius:11px; background:#fff; padding:13px; }
+.intelligence-evidence-source { color:var(--sap-text); font-size:12px; font-weight:650; }
+.intelligence-evidence-item p { margin:4px 0 0; color:var(--sap-text-soft); font-size:11px; line-height:1.5; }
+.intelligence-concept-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:18px; }
+.intelligence-concept-card { border:1px solid var(--sap-border); border-radius:14px; background:var(--sap-surface); padding:17px; }
+.intelligence-concept-card h3 { margin:0; color:var(--sap-text); font-size:15px; }
+.intelligence-concept-card>span { display:block; margin-top:4px; color:var(--sap-primary); font-size:10px; font-weight:700; text-transform:uppercase; }
+.intelligence-concept-card p { margin:10px 0 0; color:var(--sap-text-soft); font-size:11px; line-height:1.55; }
+.intelligence-concept-meta { display:flex; justify-content:space-between; gap:12px; margin-top:13px; color:var(--sap-text-faint); font-size:10px; }
+@media (max-width:1080px) { .intelligence-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.intelligence-hero-panel{grid-template-columns:auto minmax(0,1fr)}.intelligence-hero-link{grid-column:2;justify-self:start}.intelligence-concept-grid{grid-template-columns:1fr} }
+@media (max-width:760px) { .enterprise-header-area-note{display:none}.intelligence-page-header,.intelligence-detail-heading{align-items:stretch;flex-direction:column}.intelligence-hero-panel{grid-template-columns:1fr}.intelligence-hero-link{grid-column:1}.intelligence-report-card{grid-template-columns:auto minmax(0,1fr)}.intelligence-report-arrow{display:none}.intelligence-report-meta{align-items:flex-start;flex-direction:column}.intelligence-page-header .sap-button{width:100%}.intelligence-finding-top{align-items:flex-start;flex-direction:column}.intelligence-evidence-item{grid-template-columns:auto minmax(0,1fr)} }
+@media (max-width:560px) { .intelligence-metric-grid{grid-template-columns:1fr}.intelligence-hero-panel,.intelligence-panel{padding:19px}.intelligence-detail-heading h1{font-size:27px} }

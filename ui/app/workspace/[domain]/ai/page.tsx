@@ -1,142 +1,155 @@
 "use client";
 
-import { useState } from "react";
+import {
+  ArrowUp,
+  BookOpenCheck,
+  CheckCircle2,
+  MessageSquareText,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import { FormEvent, useState } from "react";
 
-import Sidebar from "@/components/layout/Sidebar";
-import RightPanel from "@/components/layout/RightPanel";
-import PageHeader from "@/components/ui/PageHeader";
-import Panel from "@/components/ui/Panel";
-import MetricCard from "@/components/ui/MetricCard";
+import AppShell from "@/components/layout/AppShell";
 import { apiFetch } from "@/lib/api";
 
-export default function WorkspaceAIPage() {
+type AdvisorResponse = {
+  answer: string;
+  concepts_used?: number;
+  findings_used?: number;
+  fusion_links_used?: number;
+  retrieval_mode?: string;
+  fallback_used?: boolean;
+};
+
+const suggestedQuestions = [
+  "What are the most important findings I should review?",
+  "Explain how this part of the business works.",
+  "Which risks or exceptions need attention?",
+  "What evidence supports the latest intelligence?",
+];
+
+export default function EnterpriseAgentPage() {
   const params = useParams();
-  const domain = String(params.domain);
-
-  const [question, setQuestion] = useState(
-    "Explain this business domain based on Sapientia intelligence."
-  );
-  const [answer, setAnswer] = useState("");
-  const [metadata, setMetadata] = useState<any>(null);
+  const domain = String(params.domain).toUpperCase();
+  const [question, setQuestion] = useState("");
+  const [response, setResponse] = useState<AdvisorResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  async function ask() {
+  async function ask(event?: FormEvent) {
+    event?.preventDefault();
+    const cleanQuestion = question.trim();
+    if (!cleanQuestion || loading) return;
+
     setLoading(true);
-    setAnswer("");
+    setError("");
 
     try {
-      const result = await apiFetch("/ai-advisor/ask", {
+      const result = await apiFetch<AdvisorResponse>("/ai-advisor/ask", {
         method: "POST",
         body: JSON.stringify({
           project_id: 1,
           business_domain: domain,
-          question,
+          question: cleanQuestion,
         }),
       });
-
-      setAnswer(result.answer);
-      setMetadata(result);
+      setResponse(result);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "The AI Advisor could not answer this question.",
+      );
     } finally {
       setLoading(false);
     }
   }
 
+  function useSuggestion(value: string) {
+    setQuestion(value);
+    setResponse(null);
+    setError("");
+  }
+
   return (
-    <main className="min-h-screen bg-[#f6f8fc]">
-      <Sidebar />
-      <RightPanel />
+    <AppShell>
+      <div className="sap-page ai-advisor-page">
+        <header className="sap-page-header ai-advisor-heading">
+          <div className="sap-page-header-copy">
+            <span className="sap-eyebrow">AI Advisor</span>
+            <h1 className="sap-page-title">Ask your enterprise</h1>
+            <p className="sap-page-description">
+              Explore {domain} using answers grounded in enterprise knowledge,
+              intelligence findings and supporting evidence.
+            </p>
+          </div>
+          <span className="ai-ready-pill">
+            <CheckCircle2 size={15} aria-hidden="true" /> Ready
+          </span>
+        </header>
 
-      <section className="ml-72 mr-96 p-10">
-        <Link
-          href={`/workspace/${domain}`}
-          className="text-sm font-medium text-indigo-600"
-        >
-          ← Back to {domain} workspace
-        </Link>
-
-        <div className="mt-6">
-          <PageHeader
-            label="Sapientia AI"
-            title={`${domain} AI Advisor`}
-            description="Ask questions grounded in Sapientia enterprise concepts, findings, fusion links and intelligence context."
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="xl:col-span-2">
-            <Panel
-              title="Ask Sapientia"
-              subtitle="The AI Advisor uses Sapientia's intelligence layer, not raw source data."
-            >
-              <textarea
-                className="mb-4 min-h-40 w-full rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 outline-none focus:border-indigo-400"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-              />
-
-              <button
-                onClick={ask}
-                disabled={loading}
-                className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-              >
-                {loading ? "Thinking..." : "Ask Sapientia"}
-              </button>
-
-              {answer && (
-                <div className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
-                  <h2 className="mb-4 text-2xl font-bold text-slate-950">
-                    Answer
-                  </h2>
-                  <p className="whitespace-pre-wrap leading-7 text-slate-700">
-                    {answer}
-                  </p>
-                </div>
-              )}
-            </Panel>
+        <section className="ai-composer-panel">
+          <div className="ai-composer-intro">
+            <span className="ai-orb"><Sparkles size={24} aria-hidden="true" /></span>
+            <div>
+              <h2>What would you like to understand?</h2>
+              <p>Ask about performance, risks, business processes, evidence or change.</p>
+            </div>
           </div>
 
-          <div>
-            <Panel
-              title="Grounding"
-              subtitle="Context used by the AI Advisor."
-            >
-              <div className="space-y-4">
-                <MetricCard
-                  label="Concepts Used"
-                  value={metadata?.concepts_used ?? 0}
-                />
-                <MetricCard
-                  label="Findings Used"
-                  value={metadata?.findings_used ?? 0}
-                />
-                <MetricCard
-                  label="Fusion Links Used"
-                  value={metadata?.fusion_links_used ?? 0}
-                />
+          <form className="ai-composer" onSubmit={ask}>
+            <textarea
+              aria-label="Question for the AI Advisor"
+              placeholder="Ask a business question in plain language..."
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              rows={4}
+            />
+            <button disabled={loading || !question.trim()} type="submit">
+              {loading ? "Thinking" : "Ask Sapientia"}
+              <ArrowUp size={17} aria-hidden="true" />
+            </button>
+          </form>
+        </section>
+
+        {error && <div className="friendly-alert">{error}</div>}
+
+        {response ? (
+          <section className="ai-answer-panel" aria-live="polite">
+            <div className="ai-answer-heading">
+              <span><MessageSquareText size={20} aria-hidden="true" /></span>
+              <div>
+                <span className="sap-eyebrow">Sapientia&apos;s answer</span>
+                <h2>Enterprise explanation</h2>
               </div>
-
-              {metadata && (
-                <div className="mt-5 rounded-2xl bg-indigo-50 p-4 text-sm text-indigo-900">
-                  <p>
-                    Retrieval mode:{" "}
-                    <span className="font-semibold">
-                      {metadata.retrieval_mode}
-                    </span>
-                  </p>
-                  <p className="mt-1">
-                    Fallback used:{" "}
-                    <span className="font-semibold">
-                      {String(metadata.fallback_used)}
-                    </span>
-                  </p>
-                </div>
-              )}
-            </Panel>
-          </div>
-        </div>
-      </section>
-    </main>
+            </div>
+            <div className="ai-answer-copy">{response.answer}</div>
+            <footer className="ai-trust-row">
+              <span><ShieldCheck size={15} /> Grounded in enterprise context</span>
+              <span><BookOpenCheck size={15} />
+                {Number(response.concepts_used || 0) + Number(response.findings_used || 0)} knowledge items considered
+              </span>
+            </footer>
+          </section>
+        ) : (
+          <section className="ai-suggestions">
+            <div>
+              <span className="sap-eyebrow">Suggested questions</span>
+              <h2>Start with a business question</h2>
+            </div>
+            <div className="ai-suggestion-grid">
+              {suggestedQuestions.map((suggestion) => (
+                <button key={suggestion} type="button" onClick={() => useSuggestion(suggestion)}>
+                  <MessageSquareText size={17} aria-hidden="true" />
+                  <span>{suggestion}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </AppShell>
   );
 }

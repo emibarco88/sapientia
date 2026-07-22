@@ -8,8 +8,7 @@ import {
   useState,
 } from "react";
 
-import Sidebar from "@/components/layout/Sidebar";
-import RightPanel from "@/components/layout/RightPanel";
+import AppShell from "@/components/layout/AppShell";
 import ConnectorLifecycle from "@/components/connectors/ConnectorLifecycle";
 import PageHeader from "@/components/ui/PageHeader";
 import Panel from "@/components/ui/Panel";
@@ -712,11 +711,8 @@ export default function SourcesPage() {
 
 
   return (
-    <main className="min-h-screen bg-[#f6f8fc]">
-      <Sidebar />
-      <RightPanel />
-
-      <section className="ml-72 mr-96 p-10">
+    <AppShell>
+      <section className="sources-page">
         <div className="flex items-start justify-between gap-6">
           <PageHeader
             label="Enterprise Connectors"
@@ -1135,7 +1131,7 @@ export default function SourcesPage() {
           onSubmit={saveConnector}
         />
       )}
-    </main>
+    </AppShell>
   );
 }
 
@@ -1635,18 +1631,18 @@ function Notice({
 function statusTone(
   status: string
 ):
-  | "indigo"
-  | "green"
-  | "slate"
-  | "amber"
-  | "red" {
+  | "primary"
+  | "success"
+  | "neutral"
+  | "warning"
+  | "danger" {
   if (
     [
       "CONNECTED",
       "COMPLETED",
     ].includes(status)
   ) {
-    return "green";
+    return "success";
   }
 
   if (
@@ -1656,7 +1652,7 @@ function statusTone(
       "PENDING",
     ].includes(status)
   ) {
-    return "indigo";
+    return "primary";
   }
 
   if (
@@ -1665,14 +1661,14 @@ function statusTone(
       "FAILED",
     ].includes(status)
   ) {
-    return "red";
+    return "danger";
   }
 
   if (status === "CONFIGURED") {
-    return "amber";
+    return "warning";
   }
 
-  return "slate";
+  return "neutral";
 }
 
 

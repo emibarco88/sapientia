@@ -1,31 +1,21 @@
 "use client";
 
-import Link from "next/link";
-
 import {
   ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  CircleAlert,
   FileText,
-  ShieldAlert,
+  Lightbulb,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
-
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
-
+import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import Sidebar from "@/components/layout/Sidebar";
-import RightPanel from "@/components/layout/RightPanel";
-import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
-
-import Badge from "@/components/ui/Badge";
-import MetricCard from "@/components/ui/MetricCard";
-import Panel from "@/components/ui/Panel";
-
+import AppShell from "@/components/layout/AppShell";
 import { apiFetch } from "@/lib/api";
-
 
 type IntelligenceReport = {
   intelligence_report_id: number;
@@ -34,369 +24,177 @@ type IntelligenceReport = {
   report_title: string;
   summary_text: string | null;
   created_at: string;
-
   findings: number;
   evidence_items: number;
   high_priority_findings: number;
 };
 
-
-export default function ReportsPage() {
+export default function EnterpriseIntelligencePage() {
   const params = useParams();
+  const domain = String(params.domain).toUpperCase();
+  const [reports, setReports] = useState<IntelligenceReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const domain = String(
-    params.domain
-  ).toUpperCase();
-
-  const [
-    reports,
-    setReports,
-  ] = useState<
-    IntelligenceReport[]
-  >([]);
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
-  const [
-    error,
-    setError,
-  ] = useState("");
-
-
-  const loadReports =
-    useCallback(async () => {
-      setLoading(true);
-      setError("");
-
-      try {
-        const response =
-          await apiFetch<
-            IntelligenceReport[]
-          >(
-            `/intelligence/${domain}/reports`
-          );
-
-        setReports(
-          Array.isArray(response)
-            ? response
-            : []
-        );
-
-      } catch (cause) {
-        setReports([]);
-
-        setError(
-          getMessage(
-            cause,
-            "Unable to load intelligence reports."
-          )
-        );
-
-      } finally {
-        setLoading(false);
-      }
-    }, [domain]);
-
+  const loadReports = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await apiFetch<IntelligenceReport[]>(`/intelligence/${domain}/reports`);
+      setReports(Array.isArray(result) ? result : []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Enterprise intelligence could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, [domain]);
 
   useEffect(() => {
     void loadReports();
   }, [loadReports]);
 
+  const totals = useMemo(
+    () =>
+      reports.reduce(
+        (value, report) => ({
+          findings: value.findings + Number(report.findings || 0),
+          evidence: value.evidence + Number(report.evidence_items || 0),
+          priority: value.priority + Number(report.high_priority_findings || 0),
+        }),
+        { findings: 0, evidence: 0, priority: 0 },
+      ),
+    [reports],
+  );
 
-  const totalFindings =
-    reports.reduce(
-      (total, report) =>
-        total
-        + Number(
-          report.findings || 0
-        ),
-      0
-    );
-
-  const totalEvidence =
-    reports.reduce(
-      (total, report) =>
-        total
-        + Number(
-          report.evidence_items || 0
-        ),
-      0
-    );
-
-  const highPriorityFindings =
-    reports.reduce(
-      (total, report) =>
-        total
-        + Number(
-          report.high_priority_findings
-          || 0
-        ),
-      0
-    );
-
+  const latestReport = reports[0] ?? null;
 
   return (
-    <main className="min-h-screen bg-[#f6f8fc]">
-      <Sidebar />
-      <RightPanel />
-
-      <section className="ml-72 mr-96 p-10">
-        <Link
-          href={`/workspace/${domain}`}
-          className="text-sm font-semibold text-indigo-600 hover:text-indigo-500"
-        >
-          ← Back to workspace
-        </Link>
-
-        <div className="mb-8 mt-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600">
-            {domain} Workspace
-          </p>
-
-          <h1 className="mt-2 text-4xl font-bold text-slate-950">
-            Intelligence Reports
-          </h1>
-
-          <p className="mt-3 max-w-3xl leading-7 text-slate-600">
-            Explore generated business narratives,
-            findings, supporting evidence and
-            intelligence history for {domain}.
-          </p>
-        </div>
-
-        <WorkspaceTabs
-          domain={domain}
-        />
+    <AppShell>
+      <div className="sap-page intelligence-page">
+        <header className="sap-page-header intelligence-page-header">
+          <div className="sap-page-header-copy">
+            <span className="sap-eyebrow">Enterprise Intelligence</span>
+            <h1 className="sap-page-title">What Sapientia is revealing about {domain}</h1>
+            <p className="sap-page-description">
+              Review evidence-backed findings, priority signals and business narratives generated from the selected business area.
+            </p>
+          </div>
+          <Link className="sap-button sap-button-primary" href={`/workspace/${domain}/ai`}>
+            Ask AI Advisor
+            <ArrowRight size={16} aria-hidden="true" />
+          </Link>
+        </header>
 
         {error && (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700">
-            {error}
+          <div className="friendly-alert intelligence-error" role="alert">
+            <CircleAlert size={18} aria-hidden="true" />
+            <span>{error}</span>
+            <button type="button" onClick={() => void loadReports()}>Try again</button>
           </div>
         )}
 
-        <div className="mb-8 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            label="Reports"
-            value={
-              reports.length
-            }
-          />
+        {loading ? (
+          <div className="intelligence-loading-state" aria-live="polite">
+            <span className="intelligence-loading-mark"><Sparkles size={22} aria-hidden="true" /></span>
+            <div><strong>Loading enterprise intelligence</strong><span>Retrieving reports, findings and evidence…</span></div>
+          </div>
+        ) : (
+          <>
+            <section className="intelligence-metric-grid" aria-label="Intelligence summary">
+              <SummaryMetric icon={<FileText size={19} />} label="Reports" value={reports.length} />
+              <SummaryMetric icon={<Lightbulb size={19} />} label="Business findings" value={totals.findings} />
+              <SummaryMetric icon={<ShieldCheck size={19} />} label="Evidence items" value={totals.evidence} />
+              <SummaryMetric icon={<CircleAlert size={19} />} label="Priority findings" value={totals.priority} priority />
+            </section>
 
-          <MetricCard
-            label="Findings"
-            value={
-              totalFindings
-            }
-          />
+            {latestReport && (
+              <section className="intelligence-hero-panel">
+                <div className="intelligence-hero-icon"><Sparkles size={22} aria-hidden="true" /></div>
+                <div className="intelligence-hero-copy">
+                  <span className="sap-eyebrow">Latest enterprise narrative</span>
+                  <h2>{latestReport.report_title}</h2>
+                  <p>{latestReport.summary_text || "Open the latest report to explore its findings and supporting evidence."}</p>
+                  <div className="intelligence-hero-meta">
+                    <span><CalendarDays size={14} /> {formatDate(latestReport.created_at)}</span>
+                    <span><CheckCircle2 size={14} /> {latestReport.findings || 0} findings</span>
+                    <span><ShieldCheck size={14} /> {latestReport.evidence_items || 0} evidence items</span>
+                  </div>
+                </div>
+                <Link className="intelligence-hero-link" href={`/workspace/${domain}/reports/${latestReport.intelligence_report_id}`}>
+                  Open latest report <ArrowRight size={16} />
+                </Link>
+              </section>
+            )}
 
-          <MetricCard
-            label="Evidence Items"
-            value={
-              totalEvidence
-            }
-          />
+            <section className="intelligence-library-section">
+              <div className="sap-section-header">
+                <div>
+                  <span className="sap-eyebrow">Intelligence history</span>
+                  <h2 className="sap-section-title">Enterprise reports</h2>
+                  <p className="sap-section-description">Each report captures what Sapientia understood when the analysis was generated.</p>
+                </div>
+                <span className="intelligence-report-count">{reports.length} {reports.length === 1 ? "report" : "reports"}</span>
+              </div>
 
-          <MetricCard
-            label="High Priority"
-            value={
-              highPriorityFindings
-            }
-          />
-        </div>
-
-        <Panel
-          title="Report History"
-          subtitle="Every intelligence generation is preserved as a historical enterprise snapshot."
-        >
-          {loading ? (
-            <ReportsLoading />
-          ) : reports.length > 0 ? (
-            <div className="space-y-4">
-              {reports.map(
-                (report, index) => (
-                  <Link
-                    key={
-                      report.intelligence_report_id
-                    }
-                    href={
-                      `/workspace/${domain}/reports/${report.intelligence_report_id}`
-                    }
-                    className="group block rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-indigo-300 hover:shadow-sm"
-                  >
-                    <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-start">
-                      <div className="flex gap-4">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
-                          <FileText className="h-5 w-5" />
+              {reports.length ? (
+                <div className="intelligence-report-list">
+                  {reports.map((report, index) => (
+                    <Link
+                      key={report.intelligence_report_id}
+                      href={`/workspace/${domain}/reports/${report.intelligence_report_id}`}
+                      className="intelligence-report-card"
+                    >
+                      <span className="intelligence-report-icon"><FileText size={20} aria-hidden="true" /></span>
+                      <div className="intelligence-report-content">
+                        <div className="intelligence-report-meta">
+                          <span>{index === 0 ? "Latest intelligence" : humanise(report.report_type)}</span>
+                          <span><CalendarDays size={13} /> {formatDate(report.created_at)}</span>
                         </div>
-
-                        <div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <h2 className="text-xl font-bold text-slate-950">
-                              {
-                                report.report_title
-                              }
-                            </h2>
-
-                            {index === 0 && (
-                              <Badge tone="green">
-                                Latest
-                              </Badge>
-                            )}
-                          </div>
-
-                          <p className="mt-2 max-w-3xl line-clamp-3 leading-6 text-slate-600">
-                            {
-                              report.summary_text
-                              || (
-                                "No narrative summary "
-                                + "is available."
-                              )
-                            }
-                          </p>
-
-                          <p className="mt-3 text-sm text-slate-400">
-                            Generated{" "}
-                            {
-                              formatDateTime(
-                                report.created_at
-                              )
-                            }
-                          </p>
-                        </div>
+                        <h3>{report.report_title}</h3>
+                        <p>{report.summary_text || "Open this report to explore its findings and supporting evidence."}</p>
+                        <footer>
+                          <span><CheckCircle2 size={14} /> {report.findings || 0} findings</span>
+                          <span><ShieldCheck size={14} /> {report.evidence_items || 0} evidence</span>
+                          {report.high_priority_findings > 0 && (
+                            <span className="intelligence-priority-label"><CircleAlert size={14} /> {report.high_priority_findings} priority</span>
+                          )}
+                        </footer>
                       </div>
-
-                      <div className="flex shrink-0 flex-wrap gap-3">
-                        <ReportMetric
-                          label="Findings"
-                          value={
-                            report.findings
-                            || 0
-                          }
-                        />
-
-                        <ReportMetric
-                          label="Evidence"
-                          value={
-                            report.evidence_items
-                            || 0
-                          }
-                        />
-
-                        {Number(
-                          report.high_priority_findings
-                          || 0
-                        ) > 0 && (
-                          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                            <ShieldAlert className="h-4 w-4" />
-
-                            {
-                              report.high_priority_findings
-                            }{" "}
-                            priority
-                          </div>
-                        )}
-
-                        <div className="flex items-center text-indigo-600">
-                          <ArrowRight className="h-5 w-5 transition group-hover:translate-x-1" />
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                )
+                      <ArrowRight className="intelligence-report-arrow" size={18} aria-hidden="true" />
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="intelligence-empty-state">
+                  <Lightbulb size={26} aria-hidden="true" />
+                  <h3>No enterprise intelligence yet</h3>
+                  <p>Generate intelligence from the Enterprise Overview to create the first report for this business area.</p>
+                </div>
               )}
-            </div>
-          ) : (
-            <EmptyState
-              title="No intelligence reports"
-              description="Generate Enterprise Intelligence from an active connector to create the first report."
-            />
-          )}
-        </Panel>
-      </section>
-    </main>
+            </section>
+          </>
+        )}
+      </div>
+    </AppShell>
   );
 }
 
-
-function ReportMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
+function SummaryMetric({ icon, label, value, priority = false }: { icon: React.ReactNode; label: string; value: number; priority?: boolean }) {
   return (
-    <div className="rounded-xl bg-slate-50 px-3 py-2 text-center">
-      <p className="text-xs uppercase tracking-wide text-slate-400">
-        {label}
-      </p>
-
-      <p className="mt-1 font-bold text-slate-950">
-        {value}
-      </p>
-    </div>
+    <article className={`intelligence-metric-card ${priority ? "is-priority" : ""}`}>
+      <span className="intelligence-metric-icon">{icon}</span>
+      <div><strong>{value}</strong><span>{label}</span></div>
+    </article>
   );
 }
 
-
-function ReportsLoading() {
-  return (
-    <div className="space-y-4">
-      {Array.from({
-        length: 3,
-      }).map((_, index) => (
-        <div
-          key={index}
-          className="h-40 animate-pulse rounded-2xl bg-slate-200"
-        />
-      ))}
-    </div>
-  );
+function humanise(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-12 text-center">
-      <h3 className="font-bold text-slate-900">
-        {title}
-      </h3>
-
-      <p className="mx-auto mt-2 max-w-xl leading-6 text-slate-500">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-
-function formatDateTime(
-  value: string | null
-): string {
-  if (!value) {
-    return "Not available";
-  }
-
-  return new Date(
-    value
-  ).toLocaleString();
-}
-
-
-function getMessage(
-  cause: unknown,
-  fallback: string
-): string {
-  return cause instanceof Error
-    ? cause.message
-    : fallback;
+function formatDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Date unavailable"
+    : new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", year: "numeric" }).format(date);
 }

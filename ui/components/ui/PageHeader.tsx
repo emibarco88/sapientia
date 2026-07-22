@@ -1,19 +1,28 @@
+import type { ReactNode } from "react";
+
 export default function PageHeader({
-    label,
-    title,
-    description,
-  }: {
-    label: string;
-    title: string;
-    description: string;
-  }) {
-    return (
-      <div className="mb-10">
-        <p className="text-sm uppercase tracking-widest text-indigo-600 font-semibold">
-          {label}
-        </p>
-        <h1 className="text-5xl font-bold text-slate-950 mt-2">{title}</h1>
-        <p className="text-slate-500 mt-3 max-w-3xl">{description}</p>
+  eyebrow,
+  label,
+  title,
+  description,
+  actions,
+}: {
+  eyebrow?: string;
+  label?: string;
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+}) {
+  const resolvedEyebrow = eyebrow ?? label;
+
+  return (
+    <header className="sap-page-header">
+      <div className="sap-page-header-copy">
+        {resolvedEyebrow ? <span className="sap-eyebrow">{resolvedEyebrow}</span> : null}
+        <h1 className="sap-page-title">{title}</h1>
+        {description ? <p className="sap-page-description">{description}</p> : null}
       </div>
-    );
-  }
+      {actions}
+    </header>
+  );
+}

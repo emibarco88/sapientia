@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  Building2,
+  CheckCircle2,
+  FileText,
+  MessageSquareText,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
-import { apiFetch, clearToken } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import EnterpriseJourney from "@/components/enterprise/EnterpriseJourney";
 import Sidebar from "@/components/layout/Sidebar";
-import RightPanel from "@/components/layout/RightPanel";
-import MetricCard from "@/components/ui/MetricCard";
+import { apiFetch } from "@/lib/api";
 
 type Domain = {
   business_domain_id: number;
@@ -17,111 +26,360 @@ type Domain = {
   intelligence_reports: number;
 };
 
-export default function DashboardPage() {
+type WorkspaceSummary = {
+  datasets: number;
+  enterprise_concepts: number;
+  findings: number;
+  reports: number;
+};
+
+type LatestReport = {
+  intelligence_report_id: number;
+  report_title: string;
+  summary_text: string | null;
+  created_at: string | null;
+};
+
+type Finding = {
+  intelligence_finding_id: number;
+  finding_title: string;
+  finding_description: string;
+  created_at: string | null;
+};
+
+type WorkspaceResponse = {
+  domain?: {
+    domain_code: string;
+    domain_name: string;
+    description: string | null;
+  };
+  summary: WorkspaceSummary;
+  findings: Finding[];
+  latest_report: LatestReport | null;
+};
+
+export default function EnterpriseOverviewPage() {
   const router = useRouter();
   const [domains, setDomains] = useState<Domain[]>([]);
+  const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const activeDomain = domains[0] ?? null;
+  const activeDomainCode = activeDomain?.domain_code?.toUpperCase() ?? "";
+
+  const loadEnterprise = useCallback(async (showRefresh = false) => {
+    if (showRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    setError("");
+
+    try {
+      const domainData = await apiFetch<Domain[]>("/domains");
+      const domainList = Array.isArray(domainData) ? domainData : [];
+      setDomains(domainList);
+
+      const firstDomain = domainList[0];
+      if (!firstDomain) {
+        setWorkspace(null);
+        return;
+      }
+
+      const workspaceData = await apiFetch<WorkspaceResponse>(
+        `/domains/${firstDomain.domain_code}/workspace`
+      );
+      setWorkspace(workspaceData);
+    } catch (cause) {
+      console.error("Failed to load enterprise overview:", cause);
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Sapientia could not load your enterprise."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    apiFetch("/domains")
-      .then(setDomains)
-      .catch(() => router.push("/"));
-  }, [router]);
+    void loadEnterprise();
+  }, [loadEnterprise]);
 
-  const datasets = domains.reduce((sum, d) => sum + Number(d.datasets || 0), 0);
-  const concepts = domains.reduce((sum, d) => sum + Number(d.concepts || 0), 0);
-  const reports = domains.reduce((sum, d) => sum + Number(d.intelligence_reports || 0), 0);
+  const totalSources = useMemo(
+    () => domains.reduce((total, domain) => total + Number(domain.datasets || 0), 0),
+    [domains]
+  );
 
-  function logout() {
-    clearToken();
-    router.push("/");
+  const totalConcepts = useMemo(
+    () => domains.reduce((total, domain) => total + Number(domain.concepts || 0), 0),
+    [domains]
+  );
+
+  const totalReports = useMemo(
+    () =>
+      domains.reduce(
+        (total, domain) => total + Number(domain.intelligence_reports || 0),
+        0
+      ),
+    [domains]
+  );
+
+  const connected = totalSources > 0;
+  const discovered = Boolean(workspace && Number(workspace.summary.datasets || 0) > 0);
+  const understood = totalConcepts > 0;
+  const intelligenceReady = Boolean(
+    totalReports > 0 ||
+      Number(workspace?.summary.findings || 0) > 0 ||
+      workspace?.latest_report
+  );
+
+  const enterpriseName = "Your Enterprise";
+  const latestFinding = workspace?.findings?.[0] ?? null;
+
+  if (loading) {
+    return (
+      <main className="app-shell">
+        <Sidebar />
+        <section className="app-content">
+          <div className="overview-loading" aria-live="polite">
+            <span className="loading-orb">
+              <Sparkles size={22} aria-hidden="true" />
+            </span>
+            <h1>Preparing your enterprise</h1>
+            <p>Sapientia is bringing your business knowledge together.</p>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f8fc]">
+    <main className="app-shell">
       <Sidebar />
-      <RightPanel />
 
-      <section className="ml-72 mr-96 p-10">
-        <div className="flex justify-between items-start mb-10">
+      <section className="app-content">
+        <header className="overview-header">
           <div>
-            <h1 className="text-4xl font-bold text-slate-950">Good morning, Emiliano 👋</h1>
-            <p className="text-slate-500 mt-2">
-              Here&apos;s what&apos;s happening with your enterprise intelligence today.
+            <span className="eyebrow">Enterprise</span>
+            <h1>{enterpriseName}</h1>
+            <p>
+              A clear view of what Sapientia understands and what you can do next.
             </p>
           </div>
-          <button onClick={logout} className="rounded-xl bg-white border px-4 py-2 text-sm">
-            Logout
+
+          <button
+            className="quiet-button"
+            disabled={refreshing}
+            onClick={() => void loadEnterprise(true)}
+            type="button"
+          >
+            <RefreshCw
+              className={refreshing ? "spin" : ""}
+              size={17}
+              aria-hidden="true"
+            />
+            {refreshing ? "Refreshing" : "Refresh"}
           </button>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-8">
-          <MetricCard label="Business Domains" value={domains.length} delta="+1 this week" />
-          <MetricCard label="Datasets" value={datasets} delta="+5 this week" />
-          <MetricCard label="Enterprise Concepts" value={concepts} delta="+12 this week" />
-          <MetricCard label="Reports" value={reports} delta="+3 this week" />
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-          <Panel title="Top Business Domains">
-            <div className="space-y-3">
-              {domains.map((domain) => (
-                <Link
-                  key={domain.business_domain_id}
-                  href={`/domains/${domain.domain_code}`}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 p-4 hover:border-indigo-400"
-                >
-                  <div>
-                    <p className="font-semibold">{domain.domain_code}</p>
-                    <p className="text-sm text-slate-500">{domain.domain_name}</p>
-                  </div>
-                  <div className="text-right text-sm text-slate-500">
-                    <p>{domain.datasets} datasets</p>
-                    <p>{domain.concepts} concepts</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel title="AI Advisor">
-            <div className="rounded-2xl bg-gradient-to-r from-indigo-50 to-fuchsia-50 p-6 mb-4">
-              <p className="text-slate-700">
-                Ask questions grounded in Sapientia&apos;s enterprise intelligence layer.
-              </p>
-            </div>
-            <Link
-              href="/domains/FINANCE/ask"
-              className="block rounded-xl bg-indigo-600 text-white text-center py-3 font-semibold"
-            >
-              Ask Sapientia
-            </Link>
-          </Panel>
-        </div>
-
-        <Panel title="Recent Intelligence Findings">
-          <div className="space-y-3">
-            {[
-              "Invoice validation rules identified",
-              "Revenue concept linked to invoice totals",
-              "Payment status governance detected",
-              "General Ledger concept identified",
-            ].map((item) => (
-              <div key={item} className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-                {item}
-              </div>
-            ))}
+        {error && (
+          <div className="friendly-alert" role="alert">
+            <strong>We could not refresh the enterprise overview.</strong>
+            <span>{error}</span>
           </div>
-        </Panel>
+        )}
+
+        {!activeDomain ? (
+          <section className="empty-enterprise-card">
+            <div className="empty-enterprise-icon">
+              <Building2 size={28} aria-hidden="true" />
+            </div>
+            <span className="eyebrow">Welcome to Sapientia</span>
+            <h2>Start building your enterprise intelligence</h2>
+            <p>
+              Connect your first business source. Sapientia will then discover your
+              information, learn its meaning and prepare intelligence you can explore.
+            </p>
+            <Link className="primary-action" href="/sources">
+              Connect a data source
+              <ArrowRight size={17} aria-hidden="true" />
+            </Link>
+          </section>
+        ) : (
+          <>
+            <section className="enterprise-hero">
+              <div className="enterprise-hero-copy">
+                <div className="ready-pill">
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  {intelligenceReady ? "Enterprise ready" : "Enterprise in progress"}
+                </div>
+
+                <h2>
+                  {intelligenceReady
+                    ? "Your enterprise intelligence is ready to explore."
+                    : "Sapientia is learning how your business works."}
+                </h2>
+
+                <p>
+                  {intelligenceReady
+                    ? "Ask business questions, review evidence-backed findings and explore what Sapientia has learned."
+                    : "Continue the guided journey to turn connected business information into useful intelligence."}
+                </p>
+
+                <div className="hero-actions">
+                  {intelligenceReady ? (
+                    <Link
+                      className="primary-action"
+                      href={`/workspace/${activeDomainCode}/ai`}
+                    >
+                      Open Enterprise Intelligence Agent
+                      <ArrowRight size={17} aria-hidden="true" />
+                    </Link>
+                  ) : (
+                    <Link className="primary-action" href="/sources">
+                      Continue setup
+                      <ArrowRight size={17} aria-hidden="true" />
+                    </Link>
+                  )}
+
+                  <Link
+                    className="secondary-action"
+                    href={`/workspace/${activeDomainCode}`}
+                  >
+                    View enterprise
+                  </Link>
+                </div>
+              </div>
+
+              <div className="agent-preview" aria-label="Enterprise Intelligence Agent">
+                <span className="agent-preview-icon">
+                  <MessageSquareText size={21} aria-hidden="true" />
+                </span>
+                <div>
+                  <span>Enterprise Intelligence Agent</span>
+                  <strong>{intelligenceReady ? "Ready" : "Preparing"}</strong>
+                  <p>
+                    {intelligenceReady
+                      ? "Grounded in your enterprise knowledge and supporting evidence."
+                      : "It will become available when enterprise intelligence is ready."}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <div className="overview-grid">
+              <section className="surface-card journey-card">
+                <div className="section-heading">
+                  <div>
+                    <span className="eyebrow">Guided setup</span>
+                    <h2>Enterprise journey</h2>
+                  </div>
+                  <span className="section-supporting-text">
+                    {intelligenceReady ? "Complete" : "In progress"}
+                  </span>
+                </div>
+
+                <EnterpriseJourney
+                  connected={connected}
+                  discovered={discovered}
+                  understood={understood}
+                  intelligenceReady={intelligenceReady}
+                />
+              </section>
+
+              <aside className="overview-side-column">
+                <section className="surface-card">
+                  <div className="section-heading compact-heading">
+                    <div>
+                      <span className="eyebrow">Enterprise knowledge</span>
+                      <h2>What Sapientia understands</h2>
+                    </div>
+                  </div>
+
+                  <div className="knowledge-list">
+                    {domains.map((domain) => (
+                      <Link
+                        className="knowledge-item"
+                        href={`/workspace/${domain.domain_code}`}
+                        key={domain.business_domain_id}
+                      >
+                        <span className="knowledge-icon">
+                          <Building2 size={17} aria-hidden="true" />
+                        </span>
+                        <span>
+                          <strong>{domain.domain_name || domain.domain_code}</strong>
+                          <small>
+                            {Number(domain.concepts || 0) > 0
+                              ? "Business knowledge available"
+                              : "Information connected"}
+                          </small>
+                        </span>
+                        <ArrowRight size={16} aria-hidden="true" />
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="surface-card latest-card">
+                  <div className="section-heading compact-heading">
+                    <div>
+                      <span className="eyebrow">Latest intelligence</span>
+                      <h2>What changed recently</h2>
+                    </div>
+                  </div>
+
+                  {latestFinding ? (
+                    <div className="latest-intelligence">
+                      <span className="latest-icon">
+                        <Sparkles size={18} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <strong>{latestFinding.finding_title}</strong>
+                        <p>{latestFinding.finding_description}</p>
+                      </div>
+                    </div>
+                  ) : workspace?.latest_report ? (
+                    <div className="latest-intelligence">
+                      <span className="latest-icon">
+                        <FileText size={18} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <strong>{workspace.latest_report.report_title}</strong>
+                        <p>
+                          {workspace.latest_report.summary_text ||
+                            "A new enterprise intelligence report is available."}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="gentle-empty-state">
+                      <p>
+                        New findings will appear here once enterprise intelligence has
+                        been generated.
+                      </p>
+                    </div>
+                  )}
+
+                  {workspace?.latest_report && (
+                    <Link
+                      className="text-action"
+                      href={`/workspace/${activeDomainCode}/reports/${workspace.latest_report.intelligence_report_id}`}
+                    >
+                      Open latest report
+                      <ArrowRight size={16} aria-hidden="true" />
+                    </Link>
+                  )}
+                </section>
+              </aside>
+            </div>
+          </>
+        )}
       </section>
     </main>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-3xl bg-white border border-slate-200 p-6 shadow-sm">
-      <h2 className="text-xl font-bold mb-5 text-slate-900">{title}</h2>
-      {children}
-    </div>
   );
 }
