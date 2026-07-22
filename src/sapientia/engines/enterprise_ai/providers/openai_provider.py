@@ -12,7 +12,6 @@ import time
 from typing import Any
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
 from sapientia.engines.enterprise_ai.exceptions import (
     AIProviderConfigurationError,
@@ -32,7 +31,7 @@ load_dotenv()
 
 class OpenAIProvider(AIProvider):
     """
-    Executes Enterprise AI requests using the OpenAI Responses API.
+    Executes Enterprise AI requests using OpenAI.
     """
 
     def __init__(
@@ -40,6 +39,16 @@ class OpenAIProvider(AIProvider):
         api_key: str | None = None,
         default_model: str | None = None,
     ) -> None:
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise AIProviderConfigurationError(
+                "The OpenAI provider is selected, but the "
+                "'openai' Python package is not installed. "
+                "Install the optional provider dependency using: "
+                "python3 -m pip install openai"
+            ) from exc
+
         self.api_key = (
             api_key
             or os.getenv("OPENAI_API_KEY")
@@ -168,8 +177,8 @@ class OpenAIProvider(AIProvider):
         raw_response: dict[str, Any],
     ) -> dict[str, int | None]:
         """
-        Extract token usage without tightly coupling Sapientia to
-        a specific SDK response class.
+        Extract provider usage without tightly coupling Sapientia to an
+        SDK-specific response type.
         """
 
         usage = (

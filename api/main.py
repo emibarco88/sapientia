@@ -1,3 +1,10 @@
+from sapientia.config import (
+    load_application_environment,
+)
+
+load_application_environment()
+
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import (
     CORSMiddleware,

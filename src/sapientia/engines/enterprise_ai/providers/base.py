@@ -2,7 +2,8 @@
 Module: base.py
 
 Purpose:
-Defines the provider interface used by Sapientia's Enterprise AI Engine.
+Defines the provider-independent contract used by Sapientia's
+Enterprise AI Engine.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from sapientia.engines.enterprise_ai.models import (
 
 class AIProvider(ABC):
     """
-    Contract implemented by Enterprise AI providers.
+    Contract implemented by all Enterprise AI providers.
     """
 
     @property

@@ -5,8 +5,15 @@ Purpose:
 Sapientia command-line entry point.
 """
 
+from sapientia.config import (
+    load_application_environment,
+)
+
+load_application_environment()
+
 import argparse
 
+# Import application modules after loading the environment.
 from sapientia.cli.ingest_cli import run_ingest
 from sapientia.cli.profile_cli import run_profile
 from sapientia.cli.semantic_cli import run_semantic
@@ -15,6 +22,9 @@ from sapientia.cli.fusion_cli import run_fusion
 from sapientia.cli.intelligence_cli import run_intelligence
 from sapientia.cli.concept_cli import run_concepts
 from sapientia.cli.ai_advisor_cli import run_ai_advisor
+
+
+
 
 
 def build_parser() -> argparse.ArgumentParser:

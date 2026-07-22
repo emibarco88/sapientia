@@ -2,44 +2,98 @@
 Module: enterprise_ai_engine.py
 
 Purpose:
-Provides a central, provider-independent AI capability layer for
-Sapientia.
+Provides Sapientia's central, provider-independent AI capability layer.
 
-All Sapientia engines should call this component rather than invoking
-OpenAI or another model provider directly.
+The engine depends only on the AIProvider contract and the provider
+registry. It has no direct dependency on OpenAI or any other vendor.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
+from sapientia.engines.enterprise_ai.default_registry import (
+    build_default_provider_registry,
+)
 from sapientia.engines.enterprise_ai.models import (
     AICapability,
     AIRequest,
     AIResponse,
 )
+from sapientia.engines.enterprise_ai.provider_registry import (
+    AIProviderRegistry,
+)
 from sapientia.engines.enterprise_ai.providers.base import (
     AIProvider,
-)
-from sapientia.engines.enterprise_ai.providers.openai_provider import (
-    OpenAIProvider,
 )
 
 
 class EnterpriseAIEngine:
     """
-    Central AI façade used by Sapientia.
+    Central provider-independent AI façade used by Sapientia.
     """
 
     def __init__(
         self,
         provider: AIProvider | None = None,
+        provider_name: str | None = None,
+        provider_registry: (
+            AIProviderRegistry | None
+        ) = None,
+        provider_options: (
+            dict[str, Any] | None
+        ) = None,
     ) -> None:
-        self.provider = (
-            provider
-            or OpenAIProvider()
+        """
+        Initialise the Enterprise AI Engine.
+
+        A concrete provider can be injected directly for testing.
+
+        Otherwise, the configured provider is resolved lazily through
+        the provider registry.
+        """
+
+        self.provider_registry = (
+            provider_registry
+            or build_default_provider_registry()
         )
+
+        self.provider_name = (
+            provider_name
+            or os.getenv(
+                "SAPIENTIA_AI_PROVIDER",
+                "OPENAI",
+            )
+        ).strip().upper()
+
+        self.provider_options = (
+            provider_options or {}
+        )
+
+        self._provider = provider
+
+    @property
+    def provider(self) -> AIProvider:
+        """
+        Return the active provider.
+
+        Provider creation is lazy, so provider SDKs are imported only
+        when the first AI operation is executed.
+        """
+
+        if self._provider is None:
+            self._provider = (
+                self.provider_registry.create_provider(
+                    provider_name=(
+                        self.provider_name
+                    ),
+                    **self.provider_options,
+                )
+            )
+
+        return self._provider
 
     def generate(
         self,
@@ -60,9 +114,10 @@ class EnterpriseAIEngine:
         metadata: (
             dict[str, Any] | None
         ) = None,
+        model: str | None = None,
     ) -> AIResponse:
         """
-        Answer an enterprise question using a completed grounded prompt.
+        Answer an enterprise question using a grounded prompt.
         """
 
         return self.generate(
@@ -74,6 +129,7 @@ class EnterpriseAIEngine:
                 max_output_tokens=(
                     max_output_tokens
                 ),
+                model=model,
                 metadata=metadata or {},
             )
         )
@@ -83,6 +139,7 @@ class EnterpriseAIEngine:
         document_text: str,
         document_title: str | None = None,
         max_output_tokens: int = 1200,
+        model: str | None = None,
     ) -> AIResponse:
         """
         Generate an enterprise-focused document summary.
@@ -127,6 +184,7 @@ Summary:
                 max_output_tokens=(
                     max_output_tokens
                 ),
+                model=model,
                 metadata={
                     "document_title": title,
                 },
@@ -138,12 +196,10 @@ Summary:
         document_text: str,
         document_title: str | None = None,
         max_output_tokens: int = 1800,
+        model: str | None = None,
     ) -> AIResponse:
         """
         Extract candidate business rules from enterprise content.
-
-        The response is requested as JSON text. Formal structured-output
-        enforcement will be added in the next iteration.
         """
 
         title = (
@@ -198,6 +254,7 @@ Document text:
                 max_output_tokens=(
                     max_output_tokens
                 ),
+                model=model,
                 metadata={
                     "document_title": title,
                 },
@@ -210,10 +267,7 @@ Document text:
             )
         )
 
-        if (
-            response.structured_output
-            is None
-        ):
+        if response.structured_output is None:
             response.warnings.append(
                 "The business-rule response "
                 "could not be parsed as JSON."
@@ -226,6 +280,7 @@ Document text:
         document_text: str,
         document_title: str | None = None,
         max_output_tokens: int = 1600,
+        model: str | None = None,
     ) -> AIResponse:
         """
         Extract enterprise entities from document content.
@@ -279,6 +334,7 @@ Document text:
                 max_output_tokens=(
                     max_output_tokens
                 ),
+                model=model,
                 metadata={
                     "document_title": title,
                 },
@@ -291,13 +347,10 @@ Document text:
             )
         )
 
-        if (
-            response.structured_output
-            is None
-        ):
+        if response.structured_output is None:
             response.warnings.append(
-                "The entity response could "
-                "not be parsed as JSON."
+                "The entity response could not "
+                "be parsed as JSON."
             )
 
         return response
@@ -307,8 +360,7 @@ Document text:
         content: str,
     ) -> Any | None:
         """
-        Parse JSON returned by the model, including responses enclosed
-        in Markdown JSON fences.
+        Parse model-returned JSON, including Markdown JSON fences.
         """
 
         normalized = str(
@@ -323,8 +375,7 @@ Document text:
 
             if (
                 lines
-                and lines[-1].strip()
-                == "```"
+                and lines[-1].strip() == "```"
             ):
                 lines = lines[:-1]
 
