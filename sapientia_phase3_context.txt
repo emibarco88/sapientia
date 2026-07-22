@@ -1,0 +1,1861 @@
+==========================================
+ SAPientia Phase 3 Context
+==========================================
+
+
+=========================================================
+src/sapientia/services/connector_lifecycle_service.py
+=========================================================
+"""
+Module: connector_lifecycle_service.py
+
+Purpose:
+Coordinates the customer-facing Enterprise Connector lifecycle.
+
+Current implemented stages:
+
+1. Asset Discovery scope synchronisation
+2. Enterprise Understanding
+3. Enterprise Intelligence readiness
+
+Enterprise Understanding performs:
+
+- semantic analysis for each active connector dataset
+- knowledge fusion for each active connector dataset
+- enterprise concept generation for the connector's business domain
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy import text
+
+from sapientia.db.connection import get_engine
+
+from sapientia.services.semantic_service import (
+    SemanticService,
+)
+from sapientia.services.knowledge_fusion_service import (
+    KnowledgeFusionService,
+)
+from sapientia.services.enterprise_concept_service import (
+    EnterpriseConceptService,
+)
+
+
+class ConnectorLifecycleService:
+    def sync_discovery_scope(
+        self,
+        connector_id: int,
+        discovery_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Synchronise the connector's active dataset membership with the
+        result of the latest successful discovery.
+
+        Previous mappings remain stored but are marked inactive.
+        """
+
+        dataset_ids = self._extract_dataset_ids(
+            discovery_result
+        )
+
+        engine = get_engine()
+
+        with engine.begin() as connection:
+            self._assert_connector_exists(
+                connection=connection,
+                connector_id=connector_id,
+            )
+
+            connection.execute(
+                text("""
+                    UPDATE
+                        ekr_connection.connector_dataset
+
+                    SET
+                        is_active = FALSE,
+                        removed_from_scope_at = NOW()
+
+                    WHERE connector_id = :connector_id
+                      AND is_active = TRUE
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+                },
+            )
+
+            for dataset_id in dataset_ids:
+                connection.execute(
+                    text("""
+                        INSERT INTO
+                            ekr_connection.connector_dataset
+                        (
+                            connector_id,
+                            dataset_id,
+                            is_active,
+                            first_discovered_at,
+                            last_discovered_at,
+                            removed_from_scope_at
+                        )
+                        VALUES
+                        (
+                            :connector_id,
+                            :dataset_id,
+                            TRUE,
+                            NOW(),
+                            NOW(),
+                            NULL
+                        )
+
+                        ON CONFLICT
+                        (
+                            connector_id,
+                            dataset_id
+                        )
+                        DO UPDATE
+                        SET
+                            is_active = TRUE,
+                            last_discovered_at = NOW(),
+                            removed_from_scope_at = NULL
+                    """),
+                    {
+                        "connector_id":
+                            connector_id,
+
+                        "dataset_id":
+                            dataset_id,
+                    },
+                )
+
+            connection.execute(
+                text("""
+                    INSERT INTO
+                        ekr_connection
+                        .connector_lifecycle_state
+                    (
+                        connector_id,
+                        discovery_status,
+                        understanding_status,
+                        intelligence_status,
+                        discovery_message,
+                        understanding_message,
+                        intelligence_message,
+                        last_discovered_at,
+                        updated_at
+                    )
+                    VALUES
+                    (
+                        :connector_id,
+                        'COMPLETED',
+                        'PENDING',
+                        'PENDING',
+                        :message,
+                        NULL,
+                        NULL,
+                        NOW(),
+                        NOW()
+                    )
+
+                    ON CONFLICT (connector_id)
+                    DO UPDATE
+                    SET
+                        discovery_status =
+                            'COMPLETED',
+
+                        understanding_status =
+                            'PENDING',
+
+                        intelligence_status =
+                            'PENDING',
+
+                        discovery_message =
+                            EXCLUDED.discovery_message,
+
+                        understanding_message =
+                            NULL,
+
+                        intelligence_message =
+                            NULL,
+
+                        last_discovered_at =
+                            NOW(),
+
+                        updated_at =
+                            NOW()
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+
+                    "message":
+                        (
+                            f"{len(dataset_ids)} active "
+                            "dataset(s) discovered."
+                        ),
+                },
+            )
+
+        return {
+            "connector_id":
+                connector_id,
+
+            "active_dataset_ids":
+                dataset_ids,
+
+            "active_datasets":
+                len(dataset_ids),
+        }
+
+    def build_understanding(
+        self,
+        connector_id: int,
+        refresh_concepts: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Build Enterprise Understanding for the connector.
+
+        Semantic analysis and fusion run only for the connector's active
+        datasets.
+
+        Enterprise concepts are generated at business-domain level,
+        because concepts belong to the workspace rather than to a single
+        connector.
+        """
+
+        context = self._get_connector_context(
+            connector_id=connector_id
+        )
+
+        project_id = context["project_id"]
+        business_domain = context["domain_code"]
+        dataset_ids = context["dataset_ids"]
+
+        if not business_domain:
+            raise ValueError(
+                "The connector must be assigned to a "
+                "business workspace before Enterprise "
+                "Understanding can be built."
+            )
+
+        if not dataset_ids:
+            raise ValueError(
+                "No active datasets are available for "
+                "this connector. Run Discover Assets first."
+            )
+
+        self._set_understanding_status(
+            connector_id=connector_id,
+            status="RUNNING",
+            message=(
+                "Analysing semantic meaning, connecting "
+                "enterprise evidence and generating concepts."
+            ),
+        )
+
+        try:
+            semantic_service = SemanticService()
+
+            fusion_service = (
+                KnowledgeFusionService()
+            )
+
+            concept_service = (
+                EnterpriseConceptService()
+            )
+
+            semantic_results: list[dict[str, Any]] = []
+            fusion_results: list[dict[str, Any]] = []
+
+            total_columns_analysed = 0
+            total_candidate_links = 0
+            total_links_created = 0
+            total_knowledge_items = 0
+
+            for dataset_id in dataset_ids:
+                semantic_result = (
+                    semantic_service
+                    .analyse_dataset(
+                        dataset_id=dataset_id
+                    )
+                )
+
+                semantic_results.append(
+                    semantic_result
+                )
+
+                total_columns_analysed += int(
+                    semantic_result.get(
+                        "columns_analysed"
+                    )
+                    or 0
+                )
+
+                fusion_result = (
+                    fusion_service
+                    .fuse_project(
+                        project_id=project_id,
+                        dataset_id=dataset_id,
+                    )
+                )
+
+                fusion_results.append(
+                    fusion_result
+                )
+
+                total_candidate_links += int(
+                    fusion_result.get(
+                        "candidate_links_evaluated"
+                    )
+                    or 0
+                )
+
+                total_links_created += int(
+                    fusion_result.get(
+                        "links_created"
+                    )
+                    or 0
+                )
+
+                total_knowledge_items += int(
+                    fusion_result.get(
+                        "knowledge_items"
+                    )
+                    or 0
+                )
+
+            concept_result = (
+                concept_service
+                .build_domain_concepts(
+                    project_id=project_id,
+                    business_domain=business_domain,
+                    refresh=refresh_concepts,
+                )
+            )
+
+            concepts_created = int(
+                concept_result.get(
+                    "concepts_created"
+                )
+                or 0
+            )
+
+            evidence_count = sum(
+                int(
+                    concept.get(
+                        "evidence_count"
+                    )
+                    or 0
+                )
+                for concept in (
+                    concept_result.get(
+                        "concepts"
+                    )
+                    or []
+                )
+            )
+
+            counts = self._get_understanding_counts(
+                project_id=project_id,
+                business_domain=business_domain,
+                dataset_ids=dataset_ids,
+            )
+
+            message = (
+                "Enterprise Understanding completed: "
+                f"{len(dataset_ids)} dataset(s), "
+                f"{total_columns_analysed} column(s) analysed, "
+                f"{total_links_created} evidence link(s), "
+                f"{concepts_created} enterprise concept(s)."
+            )
+
+            self._set_understanding_status(
+                connector_id=connector_id,
+                status="COMPLETED",
+                message=message,
+            )
+
+            return {
+                "connector_id":
+                    connector_id,
+
+                "project_id":
+                    project_id,
+
+                "business_domain":
+                    business_domain,
+
+                "status":
+                    "COMPLETED",
+
+                "message":
+                    message,
+
+                "datasets_processed":
+                    len(dataset_ids),
+
+                "dataset_ids":
+                    dataset_ids,
+
+                "columns_analysed":
+                    total_columns_analysed,
+
+                "semantic_columns":
+                    counts["semantic_columns"],
+
+                "knowledge_items_considered":
+                    total_knowledge_items,
+
+                "candidate_links_evaluated":
+                    total_candidate_links,
+
+                "evidence_links_created":
+                    total_links_created,
+
+                "persisted_intelligence_links":
+                    counts["intelligence_links"],
+
+                "concepts_created":
+                    concepts_created,
+
+                "persisted_concepts":
+                    counts["enterprise_concepts"],
+
+                "concept_evidence":
+                    evidence_count,
+
+                "semantic_results":
+                    semantic_results,
+
+                "fusion_results":
+                    fusion_results,
+
+                "concept_result":
+                    concept_result,
+            }
+
+        except Exception as exc:
+            self._set_understanding_status(
+                connector_id=connector_id,
+                status="FAILED",
+                message=str(exc),
+            )
+
+            raise
+
+    def get_lifecycle(
+        self,
+        connector_id: int,
+    ) -> dict[str, Any]:
+        """
+        Return the latest lifecycle state used by the connector UI.
+        """
+
+        engine = get_engine()
+
+        with engine.begin() as connection:
+            connector = connection.execute(
+                text("""
+                    SELECT
+                        c.connector_id,
+                        c.connector_name,
+                        c.connector_status,
+                        c.last_tested_at,
+                        c.last_discovered_at,
+
+                        bd.domain_code,
+                        bd.domain_name
+
+                    FROM ekr_connection.connector c
+
+                    LEFT JOIN
+                        ekr_business.business_domain bd
+                      ON bd.business_domain_id =
+                         c.business_domain_id
+
+                    WHERE c.connector_id =
+                          :connector_id
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+                },
+            ).mappings().fetchone()
+
+            if not connector:
+                raise ValueError(
+                    "Connector not found"
+                )
+
+            state = connection.execute(
+                text("""
+                    SELECT
+                        discovery_status,
+                        understanding_status,
+                        intelligence_status,
+
+                        discovery_message,
+                        understanding_message,
+                        intelligence_message,
+
+                        last_discovered_at,
+                        last_understanding_at,
+                        last_intelligence_at
+
+                    FROM
+                        ekr_connection
+                        .connector_lifecycle_state
+
+                    WHERE connector_id =
+                          :connector_id
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+                },
+            ).mappings().fetchone()
+
+            counts = connection.execute(
+                text("""
+                    SELECT
+                        COUNT(
+                            DISTINCT cd.dataset_id
+                        ) AS active_datasets,
+
+                        COUNT(
+                            DISTINCT col.column_id
+                        ) AS active_columns,
+
+                        COUNT(
+                            DISTINCT cs.column_semantic_id
+                        ) AS semantic_columns,
+
+                        COUNT(
+                            DISTINCT il.intelligence_link_id
+                        ) AS intelligence_links
+
+                    FROM
+                        ekr_connection
+                        .connector_dataset cd
+
+                    LEFT JOIN ekr_core."column" col
+                      ON col.dataset_id =
+                         cd.dataset_id
+
+                    LEFT JOIN
+                        ekr_semantic.column_semantic cs
+                      ON cs.column_id =
+                         col.column_id
+
+                    LEFT JOIN
+                        ekr_knowledge.intelligence_link il
+                      ON il.dataset_id =
+                         cd.dataset_id
+
+                    WHERE cd.connector_id =
+                          :connector_id
+
+                      AND cd.is_active = TRUE
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+                },
+            ).mappings().one()
+
+            concept_count = 0
+
+            if connector["domain_code"]:
+                concept_count = int(
+                    connection.execute(
+                        text("""
+                            SELECT COUNT(
+                                DISTINCT
+                                ec.enterprise_concept_id
+                            )
+
+                            FROM
+                                ekr_intelligence
+                                .enterprise_concept ec
+
+                            JOIN
+                                ekr_business
+                                .business_domain bd
+                              ON bd.business_domain_id =
+                                 ec.business_domain_id
+
+                            WHERE UPPER(
+                                bd.domain_code
+                            ) = UPPER(
+                                :domain_code
+                            )
+                        """),
+                        {
+                            "domain_code":
+                                connector[
+                                    "domain_code"
+                                ],
+                        },
+                    ).scalar_one()
+                    or 0
+                )
+
+        state_dict = dict(
+            state or {}
+        )
+
+        connector_status = (
+            connector["connector_status"]
+            or "CONFIGURED"
+        )
+
+        connection_status = (
+            "COMPLETED"
+            if connector_status
+            == "CONNECTED"
+            else connector_status
+        )
+
+        return {
+            "connector_id":
+                connector["connector_id"],
+
+            "connector_name":
+                connector["connector_name"],
+
+            "connector_status":
+                connector_status,
+
+            "domain_code":
+                connector["domain_code"],
+
+            "domain_name":
+                connector["domain_name"],
+
+            "connection": {
+                "status":
+                    connection_status,
+
+                "last_tested_at":
+                    connector[
+                        "last_tested_at"
+                    ],
+            },
+
+            "discovery": {
+                "status":
+                    state_dict.get(
+                        "discovery_status",
+                        "PENDING",
+                    ),
+
+                "message":
+                    state_dict.get(
+                        "discovery_message"
+                    ),
+
+                "last_completed_at":
+                    state_dict.get(
+                        "last_discovered_at"
+                    )
+                    or connector[
+                        "last_discovered_at"
+                    ],
+
+                "datasets":
+                    int(
+                        counts[
+                            "active_datasets"
+                        ]
+                        or 0
+                    ),
+
+                "columns":
+                    int(
+                        counts[
+                            "active_columns"
+                        ]
+                        or 0
+                    ),
+            },
+
+            "understanding": {
+                "status":
+                    state_dict.get(
+                        "understanding_status",
+                        "PENDING",
+                    ),
+
+                "message":
+                    state_dict.get(
+                        "understanding_message"
+                    ),
+
+                "last_completed_at":
+                    state_dict.get(
+                        "last_understanding_at"
+                    ),
+
+                "semantic_columns":
+                    int(
+                        counts[
+                            "semantic_columns"
+                        ]
+                        or 0
+                    ),
+
+                "intelligence_links":
+                    int(
+                        counts[
+                            "intelligence_links"
+                        ]
+                        or 0
+                    ),
+
+                "enterprise_concepts":
+                    concept_count,
+            },
+
+            "intelligence": {
+                "status":
+                    state_dict.get(
+                        "intelligence_status",
+                        "PENDING",
+                    ),
+
+                "message":
+                    state_dict.get(
+                        "intelligence_message"
+                    ),
+
+                "last_completed_at":
+                    state_dict.get(
+                        "last_intelligence_at"
+                    ),
+            },
+        }
+
+    def _get_connector_context(
+        self,
+        connector_id: int,
+    ) -> dict[str, Any]:
+        engine = get_engine()
+
+        with engine.begin() as connection:
+            connector = connection.execute(
+                text("""
+                    SELECT
+                        c.connector_id,
+                        c.project_id,
+                        bd.domain_code
+
+                    FROM ekr_connection.connector c
+
+                    LEFT JOIN
+                        ekr_business.business_domain bd
+                      ON bd.business_domain_id =
+                         c.business_domain_id
+
+                    WHERE c.connector_id =
+                          :connector_id
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+                },
+            ).mappings().fetchone()
+
+            if not connector:
+                raise ValueError(
+                    "Connector not found"
+                )
+
+            rows = connection.execute(
+                text("""
+                    SELECT dataset_id
+
+                    FROM
+                        ekr_connection
+                        .connector_dataset
+
+                    WHERE connector_id =
+                          :connector_id
+
+                      AND is_active = TRUE
+
+                    ORDER BY dataset_id
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+                },
+            ).mappings().all()
+
+        return {
+            "project_id":
+                int(
+                    connector["project_id"]
+                ),
+
+            "domain_code":
+                connector["domain_code"],
+
+            "dataset_ids":
+                [
+                    int(row["dataset_id"])
+                    for row in rows
+                ],
+        }
+
+    def _get_understanding_counts(
+        self,
+        project_id: int,
+        business_domain: str,
+        dataset_ids: list[int],
+    ) -> dict[str, int]:
+        engine = get_engine()
+
+        with engine.begin() as connection:
+            semantic_columns = int(
+                connection.execute(
+                    text("""
+                        SELECT COUNT(
+                            DISTINCT
+                            cs.column_semantic_id
+                        )
+
+                        FROM
+                            ekr_semantic
+                            .column_semantic cs
+
+                        JOIN ekr_core."column" c
+                          ON c.column_id =
+                             cs.column_id
+
+                        WHERE c.dataset_id =
+                              ANY(:dataset_ids)
+                    """),
+                    {
+                        "dataset_ids":
+                            dataset_ids,
+                    },
+                ).scalar_one()
+                or 0
+            )
+
+            intelligence_links = int(
+                connection.execute(
+                    text("""
+                        SELECT COUNT(
+                            DISTINCT
+                            il.intelligence_link_id
+                        )
+
+                        FROM
+                            ekr_knowledge
+                            .intelligence_link il
+
+                        WHERE il.dataset_id =
+                              ANY(:dataset_ids)
+                    """),
+                    {
+                        "dataset_ids":
+                            dataset_ids,
+                    },
+                ).scalar_one()
+                or 0
+            )
+
+            enterprise_concepts = int(
+                connection.execute(
+                    text("""
+                        SELECT COUNT(
+                            DISTINCT
+                            ec.enterprise_concept_id
+                        )
+
+                        FROM
+                            ekr_intelligence
+                            .enterprise_concept ec
+
+                        JOIN
+                            ekr_business
+                            .business_domain bd
+                          ON bd.business_domain_id =
+                             ec.business_domain_id
+
+                        WHERE ec.project_id =
+                              :project_id
+
+                          AND UPPER(
+                              bd.domain_code
+                          ) = UPPER(
+                              :business_domain
+                          )
+                    """),
+                    {
+                        "project_id":
+                            project_id,
+
+                        "business_domain":
+                            business_domain,
+                    },
+                ).scalar_one()
+                or 0
+            )
+
+        return {
+            "semantic_columns":
+                semantic_columns,
+
+            "intelligence_links":
+                intelligence_links,
+
+            "enterprise_concepts":
+                enterprise_concepts,
+        }
+
+    def _set_understanding_status(
+        self,
+        connector_id: int,
+        status: str,
+        message: str,
+    ) -> None:
+        engine = get_engine()
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    INSERT INTO
+                        ekr_connection
+                        .connector_lifecycle_state
+                    (
+                        connector_id,
+                        understanding_status,
+                        understanding_message,
+                        last_understanding_at,
+                        updated_at
+                    )
+                    VALUES
+                    (
+                        :connector_id,
+                        :status,
+                        :message,
+
+                        CASE
+                            WHEN :status =
+                                 'COMPLETED'
+                            THEN NOW()
+                            ELSE NULL
+                        END,
+
+                        NOW()
+                    )
+
+                    ON CONFLICT (connector_id)
+                    DO UPDATE
+                    SET
+                        understanding_status =
+                            EXCLUDED
+                            .understanding_status,
+
+                        understanding_message =
+                            EXCLUDED
+                            .understanding_message,
+
+                        last_understanding_at =
+                            CASE
+                                WHEN :status =
+                                     'COMPLETED'
+                                THEN NOW()
+                                ELSE
+                                    connector_lifecycle_state
+                                    .last_understanding_at
+                            END,
+
+                        intelligence_status =
+                            CASE
+                                WHEN :status =
+                                     'COMPLETED'
+                                THEN 'PENDING'
+                                ELSE
+                                    connector_lifecycle_state
+                                    .intelligence_status
+                            END,
+
+                        intelligence_message =
+                            CASE
+                                WHEN :status =
+                                     'COMPLETED'
+                                THEN NULL
+                                ELSE
+                                    connector_lifecycle_state
+                                    .intelligence_message
+                            END,
+
+                        updated_at =
+                            NOW()
+                """),
+                {
+                    "connector_id":
+                        connector_id,
+
+                    "status":
+                        status,
+
+                    "message":
+                        message,
+                },
+            )
+
+    def _assert_connector_exists(
+        self,
+        connection,
+        connector_id: int,
+    ) -> None:
+        exists = connection.execute(
+            text("""
+                SELECT 1
+
+                FROM ekr_connection.connector
+
+                WHERE connector_id =
+                      :connector_id
+            """),
+            {
+                "connector_id":
+                    connector_id,
+            },
+        ).scalar_one_or_none()
+
+        if not exists:
+            raise ValueError(
+                "Connector not found"
+            )
+
+    def _extract_dataset_ids(
+        self,
+        discovery_result: dict[str, Any],
+    ) -> list[int]:
+        dataset_ids: list[int] = []
+
+        dataset_id = discovery_result.get(
+            "dataset_id"
+        )
+
+        if dataset_id:
+            dataset_ids.append(
+                int(dataset_id)
+            )
+
+        parent_dataset_id = (
+            discovery_result.get(
+                "parent_dataset_id"
+            )
+        )
+
+        if parent_dataset_id:
+            dataset_ids.append(
+                int(parent_dataset_id)
+            )
+
+        for asset in (
+            discovery_result.get(
+                "discovered_assets"
+            )
+            or discovery_result.get(
+                "assets"
+            )
+            or []
+        ):
+            asset_dataset_id = asset.get(
+                "dataset_id"
+            )
+
+            if asset_dataset_id:
+                dataset_ids.append(
+                    int(asset_dataset_id)
+                )
+
+        return list(
+            dict.fromkeys(
+                dataset_ids
+            )
+        )
+
+=========================================================
+src/sapientia/services/semantic_service.py
+=========================================================
+"""
+Module: semantic_service.py
+
+Purpose:
+Service layer facade for semantic analysis workflows.
+"""
+
+from sapientia.engines.semantic.semantic_engine import SemanticEngine
+
+
+class SemanticService:
+    def __init__(self):
+        self.semantic_engine = SemanticEngine()
+
+    def analyse_dataset(self, dataset_id: int) -> dict:
+        return self.semantic_engine.analyse_dataset(dataset_id)
+
+=========================================================
+src/sapientia/services/knowledge_fusion_service.py
+=========================================================
+"""
+Module: knowledge_fusion_service.py
+
+Purpose:
+Service layer facade for Knowledge Fusion workflows.
+"""
+
+from sapientia.engines.knowledge_fusion.knowledge_fusion_engine import KnowledgeFusionEngine
+
+
+class KnowledgeFusionService:
+    def __init__(self):
+        self.engine = KnowledgeFusionEngine()
+
+    def fuse_project(
+        self,
+        project_id: int,
+        document_id: int | None = None,
+        dataset_id: int | None = None,
+    ) -> dict:
+        return self.engine.fuse_project(
+            project_id=project_id,
+            document_id=document_id,
+            dataset_id=dataset_id,
+        )
+
+=========================================================
+src/sapientia/services/enterprise_concept_service.py
+=========================================================
+"""
+Module: enterprise_concept_service.py
+
+Purpose:
+Service facade for Enterprise Concept generation.
+"""
+
+from sapientia.engines.enterprise_concept.enterprise_concept_engine import (
+    EnterpriseConceptEngine,
+)
+
+
+class EnterpriseConceptService:
+    def __init__(self):
+        self.engine = EnterpriseConceptEngine()
+
+    def build_domain_concepts(
+        self,
+        project_id: int,
+        business_domain: str,
+        refresh: bool = True,
+    ) -> dict:
+        return self.engine.build_domain_concepts(
+            project_id=project_id,
+            business_domain=business_domain,
+            refresh=refresh,
+        )
+
+=========================================================
+src/sapientia/engines/semantic/semantic_engine.py
+=========================================================
+"""
+Module: semantic_engine.py
+
+Purpose:
+Coordinates semantic analysis using EKR Core and EKR Profile as input,
+then persists semantic understanding into EKR Semantic.
+"""
+
+from sapientia.db.connection import get_engine
+from sapientia.repositories.queries.semantic_repository import SemanticRepository
+from sapientia.engines.semantic.semantic_analyzer import SemanticAnalyzer
+
+
+class SemanticEngine:
+    def analyse_dataset(self, dataset_id: int) -> dict:
+        engine = get_engine()
+        analyzer = SemanticAnalyzer()
+
+        with engine.begin() as connection:
+            repository = SemanticRepository(connection)
+
+            columns = repository.get_columns_for_dataset(dataset_id)
+
+            analysed_count = 0
+
+            for column in columns:
+                semantic = analyzer.analyse_column(column)
+                repository.upsert_column_semantic(semantic)
+                analysed_count += 1
+
+        return {
+            "dataset_id": dataset_id,
+            "columns_analysed": analysed_count,
+        }
+
+=========================================================
+src/sapientia/engines/knowledge_fusion/knowledge_fusion_engine.py
+=========================================================
+"""
+Module: knowledge_fusion_engine.py
+
+Purpose:
+Fuses discovery, profiling, semantic and documented knowledge into
+persistent enterprise intelligence links.
+"""
+
+from sapientia.db.connection import get_engine
+from sapientia.repositories.knowledge.knowledge_fusion_repository import (
+    KnowledgeFusionRepository,
+)
+
+from sapientia.engines.knowledge_fusion.candidate_generator import CandidateGenerator
+from sapientia.engines.knowledge_fusion.link_scorer import LinkScorer
+
+
+class KnowledgeFusionEngine:
+    def fuse_project(
+        self,
+        project_id: int,
+        document_id: int | None = None,
+        dataset_id: int | None = None,
+    ) -> dict:
+        engine = get_engine()
+        candidate_generator = CandidateGenerator()
+        scorer = LinkScorer()
+
+        with engine.begin() as connection:
+            repository = KnowledgeFusionRepository(connection)
+
+            knowledge_items = repository.get_knowledge_items(
+                project_id=project_id,
+                document_id=document_id,
+            )
+
+            data_assets = repository.get_data_assets(
+                project_id=project_id,
+                dataset_id=dataset_id,
+            )
+
+            repository.delete_existing_links(
+                project_id=project_id,
+                document_id=document_id,
+                dataset_id=dataset_id,
+            )
+
+            candidates = candidate_generator.generate_candidates(
+                knowledge_items=knowledge_items,
+                data_assets=data_assets,
+            )
+
+            scored_links = []
+
+            for candidate in candidates:
+                scored_link = scorer.score_candidate(candidate)
+
+                if scored_link:
+                    scored_links.append(scored_link)
+
+            unique_links = self._deduplicate_links(scored_links)
+
+            for link in unique_links:
+                repository.insert_asset_link(link)
+
+        return {
+            "project_id": project_id,
+            "document_id": document_id,
+            "dataset_id": dataset_id,
+            "knowledge_items": len(knowledge_items),
+            "data_assets": len(data_assets),
+            "candidate_links_evaluated": len(candidates),
+            "links_created": len(unique_links),
+        }
+
+    def _deduplicate_links(self, links: list[dict]) -> list[dict]:
+        best_links = {}
+
+        for link in links:
+            key = (
+                link["knowledge_item_id"],
+                link.get("dataset_id"),
+                link.get("column_id"),
+            )
+
+            existing = best_links.get(key)
+
+            if existing is None or link["confidence_score"] > existing["confidence_score"]:
+                best_links[key] = link
+
+        return list(best_links.values())
+
+=========================================================
+src/sapientia/engines/enterprise_concept/enterprise_concept_engine.py
+=========================================================
+"""
+Module: enterprise_concept_engine.py
+
+Purpose:
+Consolidates semantic classifications, enterprise knowledge and fusion
+links into persistent enterprise concepts.
+"""
+
+from collections import defaultdict
+
+from sapientia.db.connection import get_engine
+from sapientia.repositories.intelligence.enterprise_intelligence_concept_repository import EnterpriseConceptRepository
+
+
+
+class EnterpriseConceptEngine:
+    CONCEPT_RULES = {
+        "INVOICE": {
+            "concept_name": "Invoice",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["invoice", "inv_"],
+        },
+        "CUSTOMER": {
+            "concept_name": "Customer",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["customer", "cust_"],
+        },
+        "PAYMENT": {
+            "concept_name": "Payment",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["payment", "paid", "overdue"],
+        },
+        "REVENUE": {
+            "concept_name": "Revenue",
+            "concept_type": "BUSINESS_MEASURE",
+            "keywords": ["revenue", "total_amount", "invoice_amount"],
+        },
+        "TAX": {
+            "concept_name": "Tax",
+            "concept_type": "BUSINESS_MEASURE",
+            "keywords": ["tax", "gst"],
+        },
+        "GENERAL_LEDGER": {
+            "concept_name": "General Ledger",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["gl_", "ledger", "account_code"],
+        },
+        "SUPPLIER": {
+            "concept_name": "Supplier",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["supplier", "vendor"],
+        },
+        "PURCHASE_ORDER": {
+            "concept_name": "Purchase Order",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["purchase_order", "po_"],
+        },
+        "ORDER": {
+            "concept_name": "Order",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["order_id", "orders", "order_line"],
+        },
+        "PRODUCT": {
+            "concept_name": "Product",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["product", "item"],
+        },
+        "EMPLOYEE": {
+            "concept_name": "Employee",
+            "concept_type": "BUSINESS_ENTITY",
+            "keywords": ["employee", "payroll"],
+        },
+    }
+
+    def build_domain_concepts(
+        self,
+        project_id: int,
+        business_domain: str,
+        refresh: bool = True,
+    ) -> dict:
+        business_domain = business_domain.upper()
+        engine = get_engine()
+
+        with engine.begin() as connection:
+            repository = EnterpriseConceptRepository(connection)
+
+            domain = repository.get_business_domain(business_domain)
+            business_domain_id = domain.get("business_domain_id")
+
+            semantic_columns = repository.get_semantic_columns(
+                project_id=project_id,
+                business_domain=business_domain,
+            )
+
+            knowledge_items = repository.get_knowledge_items(
+                project_id=project_id,
+                business_domain=business_domain,
+            )
+
+            intelligence_links = repository.get_intelligence_links(
+                project_id=project_id,
+                business_domain=business_domain,
+            )
+
+            concepts = self._derive_concepts(
+                semantic_columns=semantic_columns,
+                knowledge_items=knowledge_items,
+                intelligence_links=intelligence_links,
+            )
+
+            if refresh:
+                repository.delete_existing_concepts(
+                    project_id=project_id,
+                    business_domain_id=business_domain_id,
+                )
+
+            persisted = []
+
+            for concept in concepts:
+                concept_id = repository.create_concept(
+                    project_id=project_id,
+                    business_domain_id=business_domain_id,
+                    concept=concept,
+                )
+
+                for evidence in concept.get("evidence", []):
+                    repository.create_evidence(
+                        enterprise_concept_id=concept_id,
+                        evidence=evidence,
+                    )
+
+                persisted.append(
+                    {
+                        "enterprise_concept_id": concept_id,
+                        "concept_name": concept["concept_name"],
+                        "concept_type": concept["concept_type"],
+                        "confidence_score": concept["confidence_score"],
+                        "evidence_count": len(concept.get("evidence", [])),
+                    }
+                )
+
+        return {
+            "project_id": project_id,
+            "business_domain": business_domain,
+            "concepts_created": len(persisted),
+            "concepts": persisted,
+        }
+
+    def _derive_concepts(
+        self,
+        semantic_columns: list[dict],
+        knowledge_items: list[dict],
+        intelligence_links: list[dict],
+    ) -> list[dict]:
+        concept_evidence = defaultdict(list)
+
+        for column in semantic_columns:
+            text_blob = " ".join(
+                [
+                    str(column.get("dataset_name", "")),
+                    str(column.get("column_name", "")),
+                    str(column.get("semantic_type", "")),
+                    str(column.get("business_meaning", "")),
+                ]
+            ).lower()
+
+            for rule_code, rule in self.CONCEPT_RULES.items():
+                if self._matches_any(text_blob, rule["keywords"]):
+                    concept_evidence[rule_code].append(
+                        {
+                            "evidence_type": "SEMANTIC",
+                            "evidence_source": "Semantic Engine",
+                            "evidence_text": (
+                                f"{column.get('dataset_name')}."
+                                f"{column.get('column_name')} was classified as "
+                                f"{column.get('semantic_type')}."
+                            ),
+                            "dataset_id": column.get("dataset_id"),
+                            "column_id": column.get("column_id"),
+                            "confidence_score": column.get("confidence_score"),
+                        }
+                    )
+
+        for item in knowledge_items:
+            text_blob = " ".join(
+                [
+                    str(item.get("name", "")),
+                    str(item.get("description", "")),
+                    str(item.get("knowledge_type", "")),
+                ]
+            ).lower()
+
+            for rule_code, rule in self.CONCEPT_RULES.items():
+                if self._matches_any(text_blob, rule["keywords"]):
+                    concept_evidence[rule_code].append(
+                        {
+                            "evidence_type": "KNOWLEDGE",
+                            "evidence_source": "Knowledge Acquisition Engine",
+                            "evidence_text": (
+                                f"Knowledge item '{item.get('name')}' supports "
+                                f"the concept {rule['concept_name']}."
+                            ),
+                            "knowledge_item_id": item.get("knowledge_item_id"),
+                            "confidence_score": None,
+                        }
+                    )
+
+        for link in intelligence_links:
+            text_blob = " ".join(
+                [
+                    str(link.get("dataset_name", "")),
+                    str(link.get("column_name", "")),
+                    str(link.get("semantic_type", "")),
+                    str(link.get("business_meaning", "")),
+                    str(link.get("knowledge_name", "")),
+                    str(link.get("knowledge_description", "")),
+                ]
+            ).lower()
+
+            for rule_code, rule in self.CONCEPT_RULES.items():
+                if self._matches_any(text_blob, rule["keywords"]):
+                    concept_evidence[rule_code].append(
+                        {
+                            "evidence_type": "FUSION",
+                            "evidence_source": "Knowledge Fusion Engine",
+                            "evidence_text": (
+                                f"Fusion linked {link.get('dataset_name')}."
+                                f"{link.get('column_name')} to "
+                                f"'{link.get('knowledge_name')}'."
+                            ),
+                            "dataset_id": link.get("dataset_id"),
+                            "column_id": link.get("column_id"),
+                            "knowledge_item_id": link.get("knowledge_item_id"),
+                            "intelligence_link_id": link.get("intelligence_link_id"),
+                            "confidence_score": link.get("fusion_confidence_score"),
+                        }
+                    )
+
+        concepts = []
+
+        for rule_code, evidence in concept_evidence.items():
+            rule = self.CONCEPT_RULES[rule_code]
+            confidence = self._calculate_confidence(evidence)
+
+            concepts.append(
+                {
+                    "concept_code": rule_code,
+                    "concept_name": rule["concept_name"],
+                    "concept_type": rule["concept_type"],
+                    "concept_description": self._build_description(
+                        concept_name=rule["concept_name"],
+                        concept_type=rule["concept_type"],
+                        evidence_count=len(evidence),
+                    ),
+                    "confidence_score": confidence,
+                    "evidence_count": len(evidence),
+                    "evidence": evidence,
+                }
+            )
+
+        concepts.sort(
+            key=lambda concept: (
+                concept["concept_type"],
+                concept["concept_name"],
+            )
+        )
+
+        return concepts
+
+    def _matches_any(self, text: str, keywords: list[str]) -> bool:
+        return any(keyword.lower() in text for keyword in keywords)
+
+    def _calculate_confidence(self, evidence: list[dict]) -> float:
+        scores = [
+            float(item["confidence_score"])
+            for item in evidence
+            if item.get("confidence_score") is not None
+        ]
+
+        if not scores:
+            return min(100.0, 50.0 + len(evidence) * 5)
+
+        average = sum(scores) / len(scores)
+        evidence_boost = min(10.0, len(evidence) * 1.5)
+
+        return round(min(100.0, average + evidence_boost), 4)
+
+    def _build_description(
+        self,
+        concept_name: str,
+        concept_type: str,
+        evidence_count: int,
+    ) -> str:
+        return (
+            f"Sapientia identified {concept_name} as a {concept_type.lower()} "
+            f"based on {evidence_count} evidence record(s) from semantic, "
+            f"knowledge and fusion outputs."
+        )
+
+src/sapientia/repositories/dataset_repository.py  --> NOT FOUND
+
+src/sapientia/repositories/dataset_context_repository.py  --> NOT FOUND
+
+src/sapientia/repositories/semantic_repository.py  --> NOT FOUND
+
+src/sapientia/repositories/knowledge_repository.py  --> NOT FOUND
+
+src/sapientia/repositories/enterprise_concept_repository.py  --> NOT FOUND
+
+#########################################################
+DIRECTORY: src/sapientia/models
+#########################################################
+
+=========================================================
+src/sapientia/models/semantic.py
+=========================================================
+"""
+Module: semantic.py
+
+Purpose:
+Defines semantic understanding objects inferred from metadata
+and profiling results.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class ColumnSemantic:
+    column_id: int
+    column_name: str
+
+    semantic_type: Optional[str] = None
+    business_meaning: Optional[str] = None
+    business_domain: Optional[str] = None
+
+    is_pii: bool = False
+    sensitivity_level: str = "INTERNAL"
+
+    is_key_candidate: bool = False
+    key_type: Optional[str] = None
+
+    confidence_score: float = 0.0
+    detection_method: str = "RULE_BASED"
+    reasoning: Optional[str] = None
+
+    semantic_json: dict = field(default_factory=dict)
+
+=========================================================
+src/sapientia/models/metadata.py
+=========================================================
+"""
+Module: metadata.py
+
+Purpose:
+Defines the common metadata objects shared by all connectors
+and services.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional, List
+
+
+@dataclass
+class ColumnMetadata:
+    name: str
+    ordinal_position: int
+    data_type: str
+    nullable: bool
+    length: Optional[int] = None
+    precision_value: Optional[int] = None
+    scale_value: Optional[int] = None
+    description: Optional[str] = None
+
+
+@dataclass
+class RelationshipMetadata:
+    parent_dataset_name: str
+    child_dataset_name: str
+    relationship_type: str
+    description: Optional[str] = None
+    confidence: Optional[float] = None
+
+
+@dataclass
+class DatasetMetadata:
+    name: str
+    object_type: str
+    location: str
+    row_count: int
+    column_count: int
+    file_size_bytes: Optional[int] = None
+    columns: List[ColumnMetadata] = field(default_factory=list)
+    child_datasets: List["DatasetMetadata"] = field(default_factory=list)
+    relationships: List[RelationshipMetadata] = field(default_factory=list)
+    records: list[dict] = field(default_factory=list) #Every connector can now return metadata + records#
+
+@dataclass
+class SourceSystemMetadata:
+    name: str
+    source_type: str
+    description: Optional[str] = None
+
+=========================================================
+src/sapientia/models/profile.py
+=========================================================
+"""
+Module: profile.py
+
+Purpose:
+Defines generic dataset and column profiling objects.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional, Any
+
+
+@dataclass
+class ColumnProfile:
+    column_name: str
+
+    null_count: int
+    null_percentage: float
+    distinct_count: int
+    unique_percentage: float
+
+    min_value: Optional[str] = None
+    max_value: Optional[str] = None
+    min_length: Optional[int] = None
+    max_length: Optional[int] = None
+    avg_length: Optional[float] = None
+
+    inferred_data_type: Optional[str] = None
+
+    completeness_score: Optional[float] = None
+    validity_score: Optional[float] = None
+    consistency_score: Optional[float] = None
+    uniqueness_score: Optional[float] = None
+    quality_score: Optional[float] = None
+
+    sample_values: list[Any] = field(default_factory=list)
+    top_values: list[dict] = field(default_factory=list)
+
+    pattern_summary: dict = field(default_factory=dict)
+    numeric_summary: dict = field(default_factory=dict)
+    date_summary: dict = field(default_factory=dict)
+    boolean_summary: dict = field(default_factory=dict)
+    structure_summary: dict = field(default_factory=dict)
+    anomaly_summary: dict = field(default_factory=dict)
+    profile_json: dict = field(default_factory=dict)
+
+
+@dataclass
+class DatasetProfile:
+    row_count: int
+    column_count: int
+    duplicate_rows: int
+    column_profiles: list[ColumnProfile] = field(default_factory=list)
+    sample_rows: list[dict] = field(default_factory=list)
+    profile_json: dict = field(default_factory=dict)
+
+=========================================================
+src/sapientia/models/__init__.py
+=========================================================
+
+
+=========================================================
+src/sapientia/models/dataset.py
+=========================================================
+
+
+=========================================================
+src/sapientia/models/knowledge.py
+=========================================================
+"""
+Module: knowledge.py
+
+Purpose:
+Defines models used by the Knowledge Acquisition Engine.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class DocumentChunk:
+    chunk_number: int
+    content: str
+    heading: Optional[str] = None
+    start_line_number: Optional[int] = None
+    end_line_number: Optional[int] = None
+
+
+@dataclass
+class KnowledgeEvidence:
+    evidence_text: str
+    extraction_method: str = "RULE_BASED"
+    rule_name: Optional[str] = None
+    rule_version: Optional[str] = None
+    extractor_name: Optional[str] = None
+    start_line_number: Optional[int] = None
+    end_line_number: Optional[int] = None
+    evidence_json: dict = field(default_factory=dict)
+
+
+@dataclass
+class KnowledgeConfidence:
+    rule_score: float = 0.0
+    context_score: float = 0.0
+    structure_score: float = 0.0
+    frequency_score: float = 0.0
+    metadata_match_score: float = 0.0
+    semantic_match_score: float = 0.0
+    ai_validation_score: Optional[float] = None
+    final_score: float = 0.0
+    confidence_json: dict = field(default_factory=dict)
+
+
+@dataclass
+class KnowledgeItem:
+    knowledge_type: str
+    name: str
+    description: Optional[str] = None
+    status: str = "ACTIVE"
+    canonical_flag: bool = True
+    knowledge_json: dict = field(default_factory=dict)
+    evidence: list[KnowledgeEvidence] = field(default_factory=list)
+    confidence: KnowledgeConfidence = field(default_factory=KnowledgeConfidence)
+
+
+@dataclass
+class AcquiredDocument:
+    title: str
+    document_type: str
+    source_type: str
+    source_location: str
+    content_hash: str
+    chunks: list[DocumentChunk] = field(default_factory=list)
+    knowledge_items: list[KnowledgeItem] = field(default_factory=list)
+
+=========================================================
+src/sapientia/models/source_system.py
+=========================================================
+
+
+=========================================================
+src/sapientia/models/project.py
+=========================================================
+
+
+=========================================================
+src/sapientia/models/column.py
+=========================================================
+
+
+src/sapientia/database  --> NOT FOUND

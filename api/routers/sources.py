@@ -1248,10 +1248,17 @@ def discover_connector(
             if not file_path:
                 raise ValueError(
                     "Upload a PDF file "
-                    "before knowledge acquisition"
+                    "before discovery"
                 )
 
-            result = (
+            discovery_result = (
+                service.discover_pdf(
+                    file_path=file_path,
+                    **common,
+                )
+            )
+
+            knowledge_result = (
                 KnowledgeService()
                 .acquire_local_document(
                     project_id=(
@@ -1267,6 +1274,29 @@ def discover_connector(
                     ),
                 )
             )
+
+            result = dict(
+                discovery_result
+            )
+
+            result[
+                "knowledge_result"
+            ] = knowledge_result
+
+            if isinstance(
+                knowledge_result,
+                dict,
+            ):
+                document_id = (
+                    knowledge_result.get(
+                        "document_id"
+                    )
+                )
+
+                if document_id is not None:
+                    result[
+                        "document_id"
+                    ] = document_id
 
         elif code == "SNOWFLAKE":
             database_name = str(

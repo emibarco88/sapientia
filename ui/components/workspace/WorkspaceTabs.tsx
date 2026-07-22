@@ -3,51 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import {
+  BrainCircuit,
+  Database,
+  FileText,
+  LayoutDashboard,
+  Lightbulb,
+  Sparkles,
+} from "lucide-react";
+
+
 type WorkspaceTab = {
   label: string;
-  href: (domain: string) => string;
-  match: (pathname: string, domain: string) => boolean;
+  href: string;
+  icon: React.ReactNode;
+  exact?: boolean;
 };
 
-const tabs: WorkspaceTab[] = [
-  {
-    label: "Overview",
-    href: (domain) => `/workspace/${domain}`,
-    match: (pathname, domain) =>
-      pathname === `/workspace/${domain}`,
-  },
-  {
-    label: "Knowledge",
-    href: (domain) => `/workspace/${domain}#knowledge`,
-    match: () => false,
-  },
-  {
-    label: "Understanding",
-    href: (domain) => `/workspace/${domain}#understanding`,
-    match: () => false,
-  },
-  {
-    label: "Intelligence",
-    href: (domain) => `/workspace/${domain}#intelligence`,
-    match: () => false,
-  },
-  {
-    label: "AI Advisor",
-    href: (domain) => `/workspace/${domain}/ai`,
-    match: (pathname, domain) =>
-      pathname === `/workspace/${domain}/ai`,
-  },
-  {
-    label: "Reports",
-    href: (domain) => `/workspace/${domain}#reports`,
-    match: () => false,
-  },
-  {
-    label: "Sources",
-    href: (domain) => `/workspace/${domain}#sources`,
-    match: () => false,
-  },
-];
 
 export default function WorkspaceTabs({
   domain,
@@ -56,27 +28,89 @@ export default function WorkspaceTabs({
 }) {
   const pathname = usePathname();
 
+  const basePath =
+    `/workspace/${domain}`;
+
+  const tabs: WorkspaceTab[] = [
+    {
+      label: "Overview",
+      href: basePath,
+      icon: (
+        <LayoutDashboard className="h-4 w-4" />
+      ),
+      exact: true,
+    },
+    {
+      label: "Assets",
+      href: `${basePath}#assets`,
+      icon: (
+        <Database className="h-4 w-4" />
+      ),
+    },
+    {
+      label: "Understanding",
+      href: `${basePath}#understanding`,
+      icon: (
+        <Lightbulb className="h-4 w-4" />
+      ),
+    },
+    {
+      label: "Intelligence",
+      href: `${basePath}#intelligence`,
+      icon: (
+        <Sparkles className="h-4 w-4" />
+      ),
+    },
+    {
+      label: "Reports",
+      href: `${basePath}/reports`,
+      icon: (
+        <FileText className="h-4 w-4" />
+      ),
+    },
+    {
+      label: "AI Advisor",
+      href: `${basePath}/ai`,
+      icon: (
+        <BrainCircuit className="h-4 w-4" />
+      ),
+    },
+  ];
+
   return (
-    <div className="sticky top-0 z-20 mb-8 border-b border-slate-200 bg-[#f6f8fc]/90 backdrop-blur">
-      <div className="flex gap-2 overflow-x-auto">
+    <nav className="mb-8 overflow-x-auto">
+      <div className="flex min-w-max gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         {tabs.map((tab) => {
-          const active = tab.match(pathname, domain);
+          const cleanHref =
+            tab.href.split("#")[0];
+
+          const active = tab.exact
+            ? pathname === cleanHref
+            : (
+                cleanHref !== basePath
+                && pathname.startsWith(
+                  cleanHref
+                )
+              );
 
           return (
             <Link
               key={tab.label}
-              href={tab.href(domain)}
-              className={`whitespace-nowrap border-b-2 px-4 py-4 text-sm font-medium transition ${
+              href={tab.href}
+              className={[
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+
                 active
-                  ? "border-indigo-600 text-indigo-600"
-                  : "border-transparent text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
-              }`}
+                  ? "bg-slate-950 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
+              ].join(" ")}
             >
+              {tab.icon}
               {tab.label}
             </Link>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 }
