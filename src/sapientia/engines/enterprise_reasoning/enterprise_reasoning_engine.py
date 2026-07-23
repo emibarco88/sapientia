@@ -5,7 +5,7 @@ from sapientia.engines.enterprise_reasoning.models import DependencyEdge, Depend
 from sapientia.repositories.reasoning.reasoning_repository import ReasoningRepository
 
 class EnterpriseReasoningEngine:
-    """Deterministic graph reasoning over U1-U4 enterprise objects and relationships."""
+    """Deterministic graph reasoning over enterprise objects and relationships."""
     def __init__(self, database_engine=None):
         self.database_engine = database_engine or get_engine()
 
@@ -58,6 +58,164 @@ class EnterpriseReasoningEngine:
         ranked = sorted(best.values(), key=lambda x: (-x['confidence'], x['candidate_id']))[:limit]
         for rank, item in enumerate(ranked, 1): item['rank'] = rank
         return ranked
+
+
+    def analyse_domain(
+        self,
+        project_id: int,
+        business_domain: str,
+        max_depth: int = 6,
+    ) -> dict:
+        """
+        Build one evidence-backed reasoning run for every active object
+        in a business domain.
+
+        Run metrics are stored in reasoning_run.summary_json so the
+        implementation remains compatible with the current database
+        schema.
+        """
+        normalized_domain = str(business_domain or "").strip().upper()
+        if not normalized_domain:
+            raise ValueError("A business domain is required.")
+        if max_depth < 1 or max_depth > 25:
+            raise ValueError("max_depth must be between 1 and 25")
+
+        run_id = None
+        try:
+            with self.database_engine.begin() as connection:
+                repo = ReasoningRepository(connection)
+                snapshot_id = repo.latest_published_snapshot_id(project_id)
+                if snapshot_id is None:
+                    raise ValueError(
+                        f"No published understanding snapshot found for project {project_id}."
+                    )
+
+                run_id = repo.create_run(
+                    project_id=project_id,
+                    snapshot_id=snapshot_id,
+                    business_domain=normalized_domain,
+                    run_type="DOMAIN_REASONING",
+                )
+
+                edges = repo.load_edges(project_id, normalized_domain)
+                names = repo.object_names(project_id)
+                domain_object_ids = sorted(
+                    {
+                        edge.source_id for edge in edges
+                    }
+                    | {
+                        edge.target_id for edge in edges
+                    }
+                )
+
+                critical_ids = self._critical_nodes(edges)
+                repo.persist_edges(run_id, edges, critical_ids)
+
+                total_paths = 0
+                total_impacted = 0
+                total_root_causes = 0
+                confidence_values: list[float] = []
+
+                for origin_id in domain_object_ids:
+                    downstream_paths = self._paths(
+                        origin_id,
+                        edges,
+                        "DOWNSTREAM",
+                        max_depth,
+                    )
+                    impacted_ids = {
+                        node
+                        for path in downstream_paths
+                        for node in path.object_ids[1:]
+                    }
+                    relevant_critical_ids = impacted_ids & critical_ids
+                    confidence = (
+                        round(
+                            sum(path.confidence for path in downstream_paths)
+                            / len(downstream_paths),
+                            4,
+                        )
+                        if downstream_paths
+                        else 0.0
+                    )
+
+                    repo.persist_impact(
+                        run_id=run_id,
+                        origin_id=origin_id,
+                        direction="DOWNSTREAM",
+                        max_depth=max_depth,
+                        paths=downstream_paths,
+                        impacted_ids=impacted_ids,
+                        critical_ids=relevant_critical_ids,
+                        confidence=confidence,
+                        names=names,
+                    )
+
+                    upstream_paths = self._paths(
+                        origin_id,
+                        edges,
+                        "UPSTREAM",
+                        max_depth,
+                    )
+                    root_causes = self._root_causes(
+                        origin_id,
+                        upstream_paths,
+                        edges,
+                        names,
+                    )
+                    repo.persist_root_causes(
+                        run_id,
+                        origin_id,
+                        root_causes,
+                    )
+
+                    total_paths += len(downstream_paths)
+                    total_impacted += len(impacted_ids)
+                    total_root_causes += len(root_causes)
+                    if confidence > 0:
+                        confidence_values.append(confidence)
+
+                overall_confidence = (
+                    round(
+                        sum(confidence_values) / len(confidence_values),
+                        4,
+                    )
+                    if confidence_values
+                    else 0.0
+                )
+
+                summary = {
+                    "project_id": project_id,
+                    "business_domain": normalized_domain,
+                    "understanding_snapshot_id": snapshot_id,
+                    "object_count": len(domain_object_ids),
+                    "edge_count": len(edges),
+                    "impact_analysis_count": len(domain_object_ids),
+                    "impacted_object_references": total_impacted,
+                    "root_cause_candidate_count": total_root_causes,
+                    "critical_object_count": len(critical_ids),
+                    "path_count": total_paths,
+                    "confidence": overall_confidence,
+                }
+
+                repo.complete_run(run_id, summary)
+
+                return {
+                    "reasoning_run_id": run_id,
+                    "status": "COMPLETED",
+                    **summary,
+                }
+
+        except Exception as exc:
+            # The failed work transaction has already been rolled back.
+            # Record the failure through a fresh transaction so PostgreSQL
+            # never receives the update inside an aborted transaction.
+            if run_id is not None:
+                with self.database_engine.begin() as failure_connection:
+                    ReasoningRepository(
+                        failure_connection
+                    ).fail_run(run_id, str(exc))
+            raise
 
     def analyse(self, project_id: int, origin_object_id: int, direction: str='BOTH', max_depth: int=6,
                 business_domain: str | None=None) -> ImpactResult:

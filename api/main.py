@@ -33,6 +33,12 @@ from api.routers.enterprise_context import (
 from api.routers.intelligence import (
     router as intelligence_router,
 )
+from api.routers.explorer import (
+    router as explorer_router,
+)
+from api.routers.knowledge_graph import (
+    router as knowledge_graph_router,
+)
 from api.routers.sources import (
     router as sources_router,
 )
@@ -69,6 +75,8 @@ app.include_router(auth_router)
 app.include_router(domains_router)
 app.include_router(concepts_router)
 app.include_router(intelligence_router)
+app.include_router(explorer_router)
+app.include_router(knowledge_graph_router)
 app.include_router(ai_advisor_router)
 app.include_router(sources_router)
 

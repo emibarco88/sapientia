@@ -1,8 +1,13 @@
+from decimal import Decimal
+import traceback
+from typing import Any
+
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
 )
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from api.auth import require_auth
@@ -22,17 +27,39 @@ class BuildUnderstandingRequest(BaseModel):
     refresh_concepts: bool = True
 
 
+def _json_safe_response(
+    value: Any,
+) -> Any:
+    """
+    Convert the service response into values supported by JSON.
+
+    This protects the API boundary from PostgreSQL Decimal values and
+    other types supported by FastAPI's jsonable_encoder.
+    """
+
+    return jsonable_encoder(
+        value,
+        custom_encoder={
+            Decimal: float,
+        },
+    )
+
+
 @router.get("/{connector_id}/lifecycle")
 def get_connector_lifecycle(
     connector_id: int,
     user=Depends(require_auth),
 ):
     try:
-        return (
+        lifecycle_result = (
             ConnectorLifecycleService()
             .get_lifecycle(
                 connector_id=connector_id
             )
+        )
+
+        return _json_safe_response(
+            lifecycle_result
         )
 
     except ValueError as exc:
@@ -42,6 +69,8 @@ def get_connector_lifecycle(
         ) from exc
 
     except Exception as exc:
+        traceback.print_exc()
+
         raise HTTPException(
             status_code=500,
             detail=(
@@ -58,7 +87,7 @@ def build_connector_understanding(
     user=Depends(require_auth),
 ):
     try:
-        return (
+        understanding_result = (
             ConnectorLifecycleService()
             .build_understanding(
                 connector_id=connector_id,
@@ -68,13 +97,21 @@ def build_connector_understanding(
             )
         )
 
+        return _json_safe_response(
+            understanding_result
+        )
+
     except ValueError as exc:
+        traceback.print_exc()
+
         raise HTTPException(
             status_code=400,
             detail=str(exc),
         ) from exc
 
     except Exception as exc:
+        traceback.print_exc()
+
         raise HTTPException(
             status_code=500,
             detail=(

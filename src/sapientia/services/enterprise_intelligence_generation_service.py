@@ -1,31 +1,27 @@
 """
-Module: enterprise_intelligence_generation_service.py
+Application service for the business-facing Generate Intelligence action.
 
-Purpose:
-Coordinates domain-level Enterprise Intelligence generation.
-
-The existing EnterpriseIntelligenceService remains responsible for
-building and persisting findings, reports, evidence and AI-ready context.
-
-This orchestration service is responsible for:
-
-- validating lifecycle prerequisites
-- marking intelligence generation as running
-- invoking the existing intelligence engine
-- updating connector lifecycle state
-- returning a concise UI response
+The workflow runs enterprise reasoning, generates findings and
+recommendations, persists AI-ready knowledge, and finally produces the
+existing explainable intelligence report.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy import text
 
 from sapientia.db.connection import get_engine
-
+from sapientia.engines.enterprise_reasoning.enterprise_reasoning_engine import (
+    EnterpriseReasoningEngine,
+)
 from sapientia.services.enterprise_intelligence_service import (
     EnterpriseIntelligenceService,
+)
+from sapientia.services.enterprise_intelligence_v2_service import (
+    EnterpriseIntelligenceV2Service,
 )
 
 
@@ -41,9 +37,7 @@ class EnterpriseIntelligenceGenerationService:
         ).strip().upper()
 
         if not normalized_domain:
-            raise ValueError(
-                "A business domain is required."
-            )
+            raise ValueError("A business domain is required.")
 
         context = self._get_domain_context(
             project_id=project_id,
@@ -52,20 +46,16 @@ class EnterpriseIntelligenceGenerationService:
 
         if context["connectors"] == 0:
             raise ValueError(
-                f"No Enterprise Connectors are assigned to "
-                f"{normalized_domain}."
+                f"No Enterprise Connectors are assigned to {normalized_domain}."
             )
-
         if context["active_datasets"] == 0:
             raise ValueError(
-                f"No active datasets are available for "
-                f"{normalized_domain}. Run Discover Assets first."
+                f"No active datasets are available for {normalized_domain}. "
+                "Run Discover Assets first."
             )
-
         if context["completed_understanding"] == 0:
             raise ValueError(
-                "Enterprise Understanding must be completed before "
-                "Enterprise Intelligence can be generated."
+                "Complete Build Understanding before generating intelligence."
             )
 
         self._set_domain_intelligence_status(
@@ -73,65 +63,43 @@ class EnterpriseIntelligenceGenerationService:
             business_domain=normalized_domain,
             status="RUNNING",
             message=(
-                "Generating findings, business narrative "
-                "and AI-ready intelligence context."
+                "Analysing business dependencies, risks, opportunities "
+                "and supporting evidence."
             ),
         )
 
         try:
-            report = (
-                EnterpriseIntelligenceService()
-                .generate_domain_report(
-                    project_id=project_id,
-                    business_domain=normalized_domain,
-                    persist=persist,
-                )
+            reasoning = EnterpriseReasoningEngine().analyse_domain(
+                project_id=project_id,
+                business_domain=normalized_domain,
             )
 
-            findings = (
-                report.get("findings")
-                or []
+            intelligence = EnterpriseIntelligenceV2Service().generate(
+                project_id=project_id,
+                business_domain=normalized_domain,
+                reasoning_run_id=reasoning["reasoning_run_id"],
             )
 
-            enterprise_concepts = (
-                report.get(
-                    "enterprise_concepts"
-                )
-                or []
+            report = EnterpriseIntelligenceService().generate_domain_report(
+                project_id=project_id,
+                business_domain=normalized_domain,
+                persist=persist,
             )
 
-            datasets = (
-                report.get("datasets")
-                or []
+            knowledge_items = self._persist_ai_knowledge(
+                project_id=project_id,
+                business_domain=normalized_domain,
+                reasoning_run_id=reasoning["reasoning_run_id"],
+                intelligence=intelligence,
             )
 
-            semantic_columns = (
-                report.get(
-                    "semantic_columns"
-                )
-                or []
-            )
-
-            intelligence_links = (
-                report.get(
-                    "intelligence_links"
-                )
-                or []
-            )
-
-            intelligence_report_id = (
-                report.get(
-                    "intelligence_report_id"
-                )
-            )
+            findings = intelligence.get("findings") or []
+            recommendations = intelligence.get("recommendations") or []
 
             message = (
-                "Enterprise Intelligence completed: "
-                f"{len(datasets)} dataset(s), "
-                f"{len(semantic_columns)} semantic classification(s), "
-                f"{len(enterprise_concepts)} concept(s), "
-                f"{len(intelligence_links)} evidence link(s), "
-                f"{len(findings)} finding(s)."
+                "Enterprise Intelligence generated successfully. "
+                f"{len(findings)} insight(s) and "
+                f"{len(recommendations)} recommendation(s) are ready."
             )
 
             self._set_domain_intelligence_status(
@@ -142,68 +110,256 @@ class EnterpriseIntelligenceGenerationService:
             )
 
             return {
-                "status":
-                    "COMPLETED",
-
-                "message":
-                    message,
-
-                "project_id":
-                    project_id,
-
-                "business_domain":
-                    normalized_domain,
-
-                "intelligence_report_id":
-                    intelligence_report_id,
-
-                "datasets_analysed":
-                    len(datasets),
-
-                "semantic_columns":
-                    len(semantic_columns),
-
-                "knowledge_items":
-                    len(
-                        report.get(
-                            "knowledge_items"
-                        )
-                        or []
-                    ),
-
-                "intelligence_links":
-                    len(intelligence_links),
-
-                "enterprise_concepts":
-                    len(enterprise_concepts),
-
-                "findings_generated":
-                    len(findings),
-
-                "lineage_records":
-                    len(
-                        report.get("lineage")
-                        or []
-                    ),
-
-                "summary_text":
-                    report.get(
-                        "summary_text"
-                    ),
-
-                "report":
-                    report,
+                "status": "COMPLETED",
+                "message": message,
+                "project_id": project_id,
+                "business_domain": normalized_domain,
+                "intelligence_report_id": report.get(
+                    "intelligence_report_id"
+                ),
+                "reasoning_run_id": reasoning.get("reasoning_run_id"),
+                "enterprise_intelligence_run_id": intelligence.get(
+                    "enterprise_intelligence_run_id"
+                ),
+                "findings_generated": len(findings),
+                "recommendations_generated": len(recommendations),
+                "ai_knowledge_items_persisted": knowledge_items,
+                "summary_text": (
+                    intelligence.get("executive_summary")
+                    or report.get("summary_text")
+                ),
+                "reasoning": reasoning,
+                "intelligence": intelligence,
+                "report": report,
             }
 
         except Exception as exc:
-            self._set_domain_intelligence_status(
-                project_id=project_id,
-                business_domain=normalized_domain,
-                status="FAILED",
-                message=str(exc),
+            import traceback
+
+            traceback.print_exc()
+
+            error_message = str(exc) if str(exc) else exc.__class__.__name__
+
+            try:
+                self._set_domain_intelligence_status(
+                    project_id=project_id,
+                    business_domain=normalized_domain,
+                    status="FAILED",
+                    message=error_message[:500],
+                )
+            except Exception:
+                # Don't hide the original exception if status update fails
+                pass
+            
+            raise RuntimeError(
+                f"Enterprise Intelligence generation failed: {error_message}"
+            ) from exc
+
+
+
+
+    def _persist_ai_knowledge(
+        self,
+        project_id: int,
+        business_domain: str,
+        reasoning_run_id: int,
+        intelligence: dict[str, Any],
+    ) -> int:
+        """
+        Persist findings and recommendations as active AI knowledge items.
+
+        Existing active intelligence findings and recommendations for the
+        same project and business domain are retired before the new items
+        are inserted.
+        """
+        run_id = intelligence.get("enterprise_intelligence_run_id")
+
+        if run_id is None:
+            raise ValueError(
+                "enterprise_intelligence_run_id is required to persist "
+                "AI knowledge."
             )
 
-            raise
+        payloads: list[dict[str, Any]] = []
+
+        for index, finding in enumerate(
+            intelligence.get("findings") or [],
+            start=1,
+        ):
+            enterprise_object_id = finding.get("enterprise_object_id")
+
+            payloads.append(
+                {
+                    "knowledge_type": "INTELLIGENCE_FINDING",
+                    "knowledge_key": (
+                        f"INTELLIGENCE_FINDING:{run_id}:"
+                        f"{enterprise_object_id or 'GENERAL'}:{index}"
+                    ),
+                    "title": (
+                        finding.get("title")
+                        or "Enterprise insight"
+                    ),
+                    "content_text": (
+                        finding.get("finding_text")
+                        or finding.get("description")
+                        or ""
+                    ),
+                    "enterprise_object_id": enterprise_object_id,
+                    "reasoning_run_id": reasoning_run_id,
+                    "confidence_score": (
+                        finding.get("confidence_score")
+                        if finding.get("confidence_score") is not None
+                        else 0
+                    ),
+                    "evidence_count": int(
+                        finding.get("evidence_count") or 0
+                    ),
+                    "source_schema": finding.get("source_schema"),
+                    "source_table": finding.get("source_table"),
+                    "source_record_id": finding.get(
+                        "source_record_id"
+                    ),
+                    "knowledge_json": finding,
+                }
+            )
+
+        for index, recommendation in enumerate(
+            intelligence.get("recommendations") or [],
+            start=1,
+        ):
+            enterprise_object_id = recommendation.get(
+                "enterprise_object_id"
+            )
+
+            payloads.append(
+                {
+                    "knowledge_type": "RECOMMENDATION",
+                    "knowledge_key": (
+                        f"RECOMMENDATION:{run_id}:"
+                        f"{enterprise_object_id or 'GENERAL'}:{index}"
+                    ),
+                    "title": (
+                        recommendation.get("title")
+                        or "Recommendation"
+                    ),
+                    "content_text": (
+                        recommendation.get("recommendation_text")
+                        or recommendation.get("description")
+                        or ""
+                    ),
+                    "enterprise_object_id": enterprise_object_id,
+                    "reasoning_run_id": reasoning_run_id,
+                    "confidence_score": (
+                        recommendation.get("confidence_score")
+                        if recommendation.get("confidence_score") is not None
+                        else 0
+                    ),
+                    "evidence_count": int(
+                        recommendation.get("evidence_count") or 0
+                    ),
+                    "source_schema": recommendation.get(
+                        "source_schema"
+                    ),
+                    "source_table": recommendation.get(
+                        "source_table"
+                    ),
+                    "source_record_id": recommendation.get(
+                        "source_record_id"
+                    ),
+                    "knowledge_json": recommendation,
+                }
+            )
+
+        if not payloads:
+            return 0
+
+        engine = get_engine()
+
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE ekr_ai.ai_knowledge_item
+                    SET
+                        is_active = FALSE,
+                        updated_at = NOW()
+                    WHERE project_id = :project_id
+                      AND UPPER(business_domain) =
+                          UPPER(:business_domain)
+                      AND knowledge_type IN (
+                          'INTELLIGENCE_FINDING',
+                          'RECOMMENDATION'
+                      )
+                      AND is_active = TRUE
+                    """
+                ),
+                {
+                    "project_id": project_id,
+                    "business_domain": business_domain,
+                },
+            )
+
+            for payload in payloads:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO ekr_ai.ai_knowledge_item
+                        (
+                            project_id,
+                            business_domain,
+                            enterprise_intelligence_run_id,
+                            reasoning_run_id,
+                            enterprise_object_id,
+                            knowledge_type,
+                            knowledge_key,
+                            title,
+                            content_text,
+                            confidence_score,
+                            evidence_count,
+                            source_schema,
+                            source_table,
+                            source_record_id,
+                            knowledge_json,
+                            is_active
+                        )
+                        VALUES
+                        (
+                            :project_id,
+                            :business_domain,
+                            :run_id,
+                            :reasoning_run_id,
+                            :enterprise_object_id,
+                            :knowledge_type,
+                            :knowledge_key,
+                            :title,
+                            :content_text,
+                            :confidence_score,
+                            :evidence_count,
+                            :source_schema,
+                            :source_table,
+                            :source_record_id,
+                            CAST(:knowledge_json AS JSONB),
+                            TRUE
+                        )
+                        """
+                    ),
+                    {
+                        "project_id": project_id,
+                        "business_domain": business_domain,
+                        "run_id": run_id,
+                        **{
+                            key: value
+                            for key, value in payload.items()
+                            if key != "knowledge_json"
+                        },
+                        "knowledge_json": json.dumps(
+                            payload["knowledge_json"],
+                            default=str,
+                        ),
+                    },
+                )
+
+        return len(payloads)
 
     def _get_domain_context(
         self,

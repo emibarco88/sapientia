@@ -9,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   Lightbulb,
+  Network,
   Sparkles,
 } from "lucide-react";
 
@@ -59,6 +60,13 @@ export default function WorkspaceTabs({
       href: `${basePath}#intelligence`,
       icon: (
         <Sparkles className="h-4 w-4" />
+      ),
+    },
+    {
+      label: "Enterprise Explorer",
+      href: `${basePath}/explorer`,
+      icon: (
+        <Network className="h-4 w-4" />
       ),
     },
     {

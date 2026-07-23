@@ -40,22 +40,107 @@ class EnterpriseIntelligenceEngine:
                     "rationale_text":"Sapientia should not present high-confidence intelligence without traceable evidence.","confidence_score":.75})
         return findings, recommendations
 
-    def generate(self, project_id: int, business_domain: str, reasoning_run_id: int | None=None) -> dict[str,Any]:
-        with self.database_engine.begin() as connection:
-            repo=EnterpriseIntelligenceRepository(connection)
-            reasoning_run_id=reasoning_run_id or repo.latest_reasoning_run_id(project_id,business_domain)
-            run_id=repo.create_run(project_id,reasoning_run_id,business_domain)
-            try:
-                context=repo.reasoning_context(project_id,reasoning_run_id)
-                findings,recommendations=self._derive(context)
-                finding_ids: dict[str,int] = {}
-                for finding in findings: finding_ids[finding["title"]]=repo.add_finding(run_id,finding)
-                for recommendation in recommendations: repo.add_recommendation(run_id,finding_ids.get(recommendation.pop("finding_title")),recommendation)
-                confidence=round(sum(f["confidence_score"] for f in findings)/len(findings),4) if findings else 0.0
-                summary=(f"Sapientia analysed {len(context['objects'])} enterprise objects and {len(context['edges'])} dependency edges. "
-                         f"It identified {len(findings)} finding(s) and generated {len(recommendations)} recommendation(s).")
-                output={"enterprise_intelligence_run_id":run_id,"reasoning_run_id":reasoning_run_id,"business_domain":business_domain,
-                        "executive_summary":summary,"confidence":confidence,"findings":findings,"recommendations":recommendations}
-                repo.complete_run(run_id,summary,confidence,output); return output
-            except Exception as exc:
-                repo.fail_run(run_id,str(exc)); raise
+    def generate(
+        self,
+        project_id: int,
+        business_domain: str,
+        reasoning_run_id: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_domain = str(business_domain or "").strip().upper()
+        run_id = None
+
+        try:
+            with self.database_engine.begin() as connection:
+                repo = EnterpriseIntelligenceRepository(connection)
+                reasoning_run_id = (
+                    reasoning_run_id
+                    or repo.latest_reasoning_run_id(
+                        project_id,
+                        normalized_domain,
+                    )
+                )
+                if reasoning_run_id is None:
+                    raise ValueError(
+                        "No completed enterprise reasoning run is available."
+                    )
+
+                run_id = repo.create_run(
+                    project_id,
+                    reasoning_run_id,
+                    normalized_domain,
+                )
+                context = repo.reasoning_context(
+                    project_id,
+                    reasoning_run_id,
+                )
+                findings, recommendations = self._derive(context)
+
+                finding_ids: dict[str, int] = {}
+                for finding in findings:
+                    finding_ids[finding["title"]] = repo.add_finding(
+                        run_id,
+                        finding,
+                    )
+
+                persisted_recommendations: list[dict[str, Any]] = []
+                for recommendation in recommendations:
+                    recommendation_payload = dict(recommendation)
+                    finding_title = recommendation_payload.pop(
+                        "finding_title",
+                        None,
+                    )
+                    repo.add_recommendation(
+                        run_id,
+                        finding_ids.get(finding_title),
+                        recommendation_payload,
+                    )
+                    persisted_recommendations.append(
+                        recommendation_payload
+                    )
+
+                confidence = (
+                    round(
+                        sum(
+                            finding["confidence_score"]
+                            for finding in findings
+                        )
+                        / len(findings),
+                        4,
+                    )
+                    if findings
+                    else 0.0
+                )
+
+                summary = (
+                    f"Sapientia analysed {len(context['objects'])} "
+                    f"enterprise objects and {len(context['edges'])} "
+                    f"dependency connections. It identified "
+                    f"{len(findings)} insight(s) and generated "
+                    f"{len(persisted_recommendations)} recommendation(s)."
+                )
+
+                output = {
+                    "enterprise_intelligence_run_id": run_id,
+                    "reasoning_run_id": reasoning_run_id,
+                    "business_domain": normalized_domain,
+                    "executive_summary": summary,
+                    "confidence": confidence,
+                    "findings": findings,
+                    "recommendations": persisted_recommendations,
+                }
+
+                repo.complete_run(
+                    run_id,
+                    summary,
+                    confidence,
+                    output,
+                )
+                return output
+
+        except Exception as exc:
+            if run_id is not None:
+                with self.database_engine.begin() as failure_connection:
+                    EnterpriseIntelligenceRepository(
+                        failure_connection
+                    ).fail_run(run_id, str(exc))
+            raise

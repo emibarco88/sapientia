@@ -3,12 +3,14 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { EnterpriseProvider } from "@/components/enterprise/EnterpriseContext";
 
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
 import "./foundation.css";
 import "./knowledge.css";
 import "./intelligence.css";
 import "./ai-advisor.css";
 import "./polish.css";
+import "./explorer.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

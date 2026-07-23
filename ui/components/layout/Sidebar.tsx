@@ -7,6 +7,7 @@ import {
   FileBarChart,
   LogOut,
   MessageSquareText,
+  Network,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -42,6 +43,7 @@ export default function Sidebar() {
     const code = selectedBusinessArea?.domain_code ?? "";
     const knowledgeHref = code ? `/workspace/${code}` : "/workspaces";
     const intelligenceHref = code ? `/workspace/${code}/reports` : "/workspaces";
+    const explorerHref = code ? `/workspace/${code}/explorer` : "/workspaces";
     const agentHref = code ? `/workspace/${code}/ai` : "/workspaces";
 
     return [
@@ -60,6 +62,13 @@ export default function Sidebar() {
         match: (value) =>
           /^\/workspace\/[^/]+$/.test(value) ||
           (/^\/domains\/[^/]+$/.test(value) && !value.endsWith("/ask")),
+      },
+      {
+        label: "Enterprise Explorer",
+        shortLabel: "Explorer",
+        href: explorerHref,
+        icon: Network,
+        match: (value) => value.includes("/explorer"),
       },
       {
         label: "Intelligence",

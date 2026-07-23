@@ -1,3 +1,4 @@
+
 """
 Module: context_retrieval_engine.py
 
@@ -264,6 +265,17 @@ class ContextRetrievalEngine:
                     if fallback_used
                     else {}
                 ),
+
+            # U5/U6 AI Knowledge is always exposed when present in the
+            # latest persisted intelligence report, even when focused EKR
+            # retrieval also returned results.
+            "enterprise_ai_knowledge":
+                {
+                    "enterprise_reasoning":
+                        fallback_context.get("enterprise_reasoning") or {},
+                    "enterprise_intelligence":
+                        fallback_context.get("enterprise_intelligence") or {},
+                },
 
             "context_statistics":
                 {

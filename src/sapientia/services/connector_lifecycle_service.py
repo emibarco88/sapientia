@@ -23,6 +23,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from sapientia.db.connection import get_engine
+from sapientia.orchestration.enterprise_understanding_orchestrator import (
+    EnterpriseUnderstandingOrchestrator,
+)
 from sapientia.services.enterprise_understanding_service import (
     EnterpriseUnderstandingService,
 )
@@ -49,10 +52,19 @@ class ConnectorLifecycleService:
         enterprise_understanding_service: (
             EnterpriseUnderstandingService | None
         ) = None,
+        enterprise_understanding_orchestrator: (
+            EnterpriseUnderstandingOrchestrator | None
+        ) = None,
     ) -> None:
         self.enterprise_understanding_service = (
             enterprise_understanding_service
             or EnterpriseUnderstandingService()
+        )
+        self.enterprise_understanding_orchestrator = (
+            enterprise_understanding_orchestrator
+            or EnterpriseUnderstandingOrchestrator(
+                understanding_service=self.enterprise_understanding_service
+            )
         )
 
     def sync_discovery_scope(
@@ -290,12 +302,14 @@ class ConnectorLifecycleService:
 
         try:
             understanding_result = (
-                self.enterprise_understanding_service
+                self.enterprise_understanding_orchestrator
                 .build_understanding(
+                    project_id=project_id,
+                    business_domain=business_domain,
                     dataset_ids=dataset_ids,
-                    refresh_concepts=(
-                        refresh_concepts
-                    ),
+                    refresh_concepts=refresh_concepts,
+                    scope_type="business_area",
+                    scope_reference=business_domain,
                 )
             )
 
