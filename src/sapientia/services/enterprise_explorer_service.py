@@ -1,20 +1,18 @@
-"""
-Application service for the Enterprise Explorer graph projection.
-"""
+"""Enterprise Explorer projection backed by EnterpriseGraphService."""
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Any
 
-from sapientia.db.connection import get_engine
-from sapientia.repositories.explorer.enterprise_explorer_repository import (
-    EnterpriseExplorerRepository,
-)
+from sapientia.models.graph import EnterpriseGraphDTO
+from sapientia.services.enterprise_graph import EnterpriseGraphService
 
 
 class EnterpriseExplorerService:
-    """Build a UI-ready graph for one project and business domain."""
+    """Preserves the Explorer API contract while removing storage coupling."""
+
+    def __init__(self, graph_service: EnterpriseGraphService | None = None) -> None:
+        self.graph_service = graph_service or EnterpriseGraphService()
 
     def get_graph(
         self,
@@ -23,233 +21,69 @@ class EnterpriseExplorerService:
         limit: int = 250,
         minimum_confidence: float = 0.0,
     ) -> dict[str, Any]:
-        if project_id <= 0:
-            raise ValueError(
-                "project_id must be greater than zero."
-            )
-
-        normalized_domain = str(
-            business_domain or ""
-        ).strip().upper()
-
-        if not normalized_domain:
-            raise ValueError(
-                "A business domain is required."
-            )
-
-        bounded_limit = min(
-            max(int(limit), 1),
-            500,
+        graph = self.graph_service.get_graph(
+            project_id,
+            business_domain,
+            limit=limit,
+            minimum_confidence=minimum_confidence,
         )
+        return self._to_explorer_contract(graph)
 
-        bounded_confidence = min(
-            max(float(minimum_confidence), 0.0),
-            1.0,
+    @staticmethod
+    def _to_explorer_contract(graph: EnterpriseGraphDTO) -> dict[str, Any]:
+        finding_count = sum(int(node.metadata.get("finding_count", 0) or 0) for node in graph.nodes)
+        recommendation_count = sum(
+            int(node.metadata.get("recommendation_count", 0) or 0) for node in graph.nodes
         )
-
-        engine = get_engine()
-
-        with engine.begin() as connection:
-            repository = EnterpriseExplorerRepository(
-                connection
-            )
-
-            graph = repository.get_graph(
-                project_id=project_id,
-                business_domain=normalized_domain,
-                limit=bounded_limit,
-                minimum_confidence=bounded_confidence,
-            )
-
-        object_types = Counter(
-            str(
-                node.get(
-                    "object_type_code"
-                )
-                or "UNKNOWN"
-            )
-            for node in graph["nodes"]
-        )
-
-        relationship_types = Counter(
-            str(
-                edge.get(
-                    "relationship_type_code"
-                )
-                or "RELATED_TO"
-            )
-            for edge in graph["edges"]
-        )
-
         return {
-            "project_id": project_id,
-            "business_domain": normalized_domain,
+            "project_id": graph.project_id,
+            "business_domain": graph.business_domain,
             "summary": {
-                "node_count": len(
-                    graph["nodes"]
-                ),
-                "edge_count": len(
-                    graph["edges"]
-                ),
-                "finding_count": sum(
-                    int(
-                        node.get(
-                            "finding_count"
-                        )
-                        or 0
-                    )
-                    for node in graph["nodes"]
-                ),
-                "recommendation_count": sum(
-                    int(
-                        node.get(
-                            "recommendation_count"
-                        )
-                        or 0
-                    )
-                    for node in graph["nodes"]
-                ),
-                "object_types": dict(
-                    object_types
-                ),
-                "relationship_types": dict(
-                    relationship_types
-                ),
+                "node_count": graph.statistics.node_count,
+                "edge_count": graph.statistics.relationship_count,
+                "finding_count": finding_count,
+                "recommendation_count": recommendation_count,
+                "object_types": graph.statistics.nodes_by_type,
+                "relationship_types": graph.statistics.relationships_by_type,
             },
             "nodes": [
                 {
-                    "id": str(
-                        node[
-                            "enterprise_object_id"
-                        ]
-                    ),
-                    "enterprise_object_id": int(
-                        node[
-                            "enterprise_object_id"
-                        ]
-                    ),
-                    "label": node[
-                        "canonical_name"
-                    ],
-                    "canonical_key": node[
-                        "canonical_key"
-                    ],
-                    "object_type": node[
-                        "object_type_code"
-                    ],
-                    "description": node.get(
-                        "description"
-                    ),
-                    "business_domain": node.get(
-                        "business_domain"
-                    ),
-                    "confidence": float(
-                        node.get(
-                            "average_confidence"
-                        )
-                        or 0
-                    ),
-                    "incoming_count": int(
-                        node.get(
-                            "incoming_count"
-                        )
-                        or 0
-                    ),
-                    "outgoing_count": int(
-                        node.get(
-                            "outgoing_count"
-                        )
-                        or 0
-                    ),
-                    "finding_count": int(
-                        node.get(
-                            "finding_count"
-                        )
-                        or 0
-                    ),
-                    "recommendation_count": int(
-                        node.get(
-                            "recommendation_count"
-                        )
-                        or 0
-                    ),
+                    "id": str(node.node_id),
+                    "enterprise_object_id": node.node_id,
+                    "label": node.canonical_name,
+                    "canonical_key": node.canonical_key,
+                    "object_type": node.object_type,
+                    "description": node.description,
+                    "business_domain": node.business_domain,
+                    "confidence": float(node.confidence or 0.0),
+                    "incoming_count": node.incoming_count,
+                    "outgoing_count": node.outgoing_count,
+                    "finding_count": int(node.metadata.get("finding_count", 0) or 0),
+                    "recommendation_count": int(node.metadata.get("recommendation_count", 0) or 0),
                     "source": {
-                        "schema": node.get(
-                            "source_schema"
-                        ),
-                        "table": node.get(
-                            "source_table"
-                        ),
-                        "object_id": node.get(
-                            "source_object_id"
-                        ),
+                        "schema": node.source.schema_name,
+                        "table": node.source.table_name,
+                        "object_id": node.source.object_id,
                     },
-                    "metadata": node.get(
-                        "metadata_json"
-                    )
-                    or {},
+                    "metadata": node.metadata,
                 }
-                for node in graph["nodes"]
+                for node in graph.nodes
             ],
             "edges": [
                 {
-                    "id": str(
-                        edge[
-                            "operational_relationship_id"
-                        ]
-                    ),
-                    "operational_relationship_id": int(
-                        edge[
-                            "operational_relationship_id"
-                        ]
-                    ),
-                    "source": str(
-                        edge[
-                            "source_enterprise_object_id"
-                        ]
-                    ),
-                    "target": str(
-                        edge[
-                            "target_enterprise_object_id"
-                        ]
-                    ),
-                    "relationship_type": edge[
-                        "relationship_type_code"
-                    ],
-                    "label": str(
-                        edge[
-                            "relationship_type_code"
-                        ]
-                    ).replace(
-                        "_",
-                        " ",
-                    ).title(),
-                    "confidence": float(
-                        edge.get(
-                            "confidence_score"
-                        )
-                        or 0
-                    ),
-                    "evidence_count": int(
-                        edge.get(
-                            "evidence_count"
-                        )
-                        or 0
-                    ),
-                    "discovery_class": edge.get(
-                        "discovery_class"
-                    ),
-                    "generation_method": edge.get(
-                        "generation_method"
-                    ),
-                    "reasoning": edge.get(
-                        "reasoning"
-                    ),
-                    "metadata": edge.get(
-                        "metadata_json"
-                    )
-                    or {},
+                    "id": str(edge.relationship_id),
+                    "operational_relationship_id": edge.relationship_id,
+                    "source": str(edge.source_node_id),
+                    "target": str(edge.target_node_id),
+                    "relationship_type": edge.relationship_type,
+                    "label": edge.relationship_type.replace("_", " ").title(),
+                    "confidence": edge.confidence,
+                    "evidence_count": edge.evidence_count,
+                    "discovery_class": edge.discovery_class,
+                    "generation_method": edge.generation_method,
+                    "reasoning": edge.reasoning,
+                    "metadata": edge.metadata,
                 }
-                for edge in graph["edges"]
+                for edge in graph.relationships
             ],
         }
