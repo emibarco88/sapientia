@@ -1,167 +1,210 @@
 "use client";
 
-import { CircleAlert, Network, RefreshCw, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, CircleDot, Network, RefreshCw } from "lucide-react";
 
-import EnterpriseGraph from "@/features/explorer/components/EnterpriseGraph";
-import ExplorerFiltersPanel from "@/features/explorer/components/ExplorerFiltersPanel";
-import ExplorerStatistics from "@/features/explorer/components/ExplorerStatistics";
-import { useEnterpriseGraph } from "@/features/explorer/hooks/useEnterpriseGraph";
-import { buildEnterpriseKnowledgeGraph } from "@/features/explorer/lib/explorer-api";
-import type { ExplorerFilters } from "@/features/explorer/types/explorer";
+import { apiFetch } from "@/lib/api";
 
-const DEFAULT_FILTERS: ExplorerFilters = {
-  query: "",
-  minimumConfidence: 0,
-  objectTypes: [],
-  relationshipTypes: [],
+type GraphNode = {
+  node_id: number;
+  canonical_name: string;
+  object_type: string;
+  description?: string | null;
+  confidence?: number | null;
+  incoming_count: number;
+  outgoing_count: number;
+  evidence_count: number;
+};
+
+type GraphRelationship = {
+  relationship_id: number;
+  source_node_id: number;
+  target_node_id: number;
+  relationship_type: string;
+  confidence: number;
+};
+
+type GraphResponse = {
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+  statistics: {
+    node_count: number;
+    relationship_count: number;
+    evidence_count: number;
+  };
+};
+
+type TraversalResponse = {
+  centre_node_id: number;
+  max_depth: number;
+  direction: string;
+  nodes: Array<{ node: GraphNode; depth: number }>;
+  relationships: GraphRelationship[];
 };
 
 export default function EnterpriseExplorer({ projectId, domain }: { projectId: number; domain: string }) {
-  const [filters, setFilters] = useState<ExplorerFilters>(DEFAULT_FILTERS);
-  const [building, setBuilding] = useState(false);
-  const [buildMessage, setBuildMessage] = useState("");
-  const [buildError, setBuildError] = useState("");
-  const { graph, loading, error, refresh } = useEnterpriseGraph({
-    projectId,
-    domain,
-    minimumConfidence: filters.minimumConfidence,
-  });
+  const [graph, setGraph] = useState<GraphResponse | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [traversal, setTraversal] = useState<TraversalResponse | null>(null);
+  const [depth, setDepth] = useState(2);
+  const [loading, setLoading] = useState(true);
+  const [navigationLoading, setNavigationLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const objectTypes = useMemo(
-    () => Object.keys(graph?.summary.object_types || {}).sort(),
-    [graph],
-  );
-  const relationshipTypes = useMemo(
-    () => Object.keys(graph?.summary.relationship_types || {}).sort(),
-    [graph],
+  const selectedNode = useMemo(
+    () => graph?.nodes.find((node) => node.node_id === selectedNodeId) ?? null,
+    [graph, selectedNodeId],
   );
 
-  const visibleGraph = useMemo(() => {
-    if (!graph) return { nodes: [], edges: [] };
-
-    const normalizedQuery = filters.query.trim().toLowerCase();
-    const nodes = graph.nodes.filter((node) => {
-      const typeMatches = filters.objectTypes.length === 0 || filters.objectTypes.includes(node.object_type);
-      const queryMatches = !normalizedQuery || [
-        node.label,
-        node.canonical_key,
-        node.object_type,
-        node.description || "",
-        node.source.schema || "",
-        node.source.table || "",
-      ].join(" ").toLowerCase().includes(normalizedQuery);
-      return typeMatches && queryMatches;
-    });
-
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    const edges = graph.edges.filter((edge) => {
-      const typeMatches = filters.relationshipTypes.length === 0 || filters.relationshipTypes.includes(edge.relationship_type);
-      return typeMatches && nodeIds.has(edge.source) && nodeIds.has(edge.target);
-    });
-
-    return { nodes, edges };
-  }, [filters, graph]);
-
-  const visibleFindings = visibleGraph.nodes.reduce((total, node) => total + node.finding_count, 0);
-  const visibleRecommendations = visibleGraph.nodes.reduce((total, node) => total + node.recommendation_count, 0);
-
-  async function buildGraph() {
-    setBuilding(true);
-    setBuildError("");
-    setBuildMessage("");
+  async function loadGraph() {
+    setLoading(true);
+    setError(null);
     try {
-      const result = await buildEnterpriseKnowledgeGraph({ projectId, domain });
-      setFilters(DEFAULT_FILTERS);
-      setBuildMessage(
-        `Built ${result.objects_generated} business objects and ${result.relationships_generated} relationships from ${result.technical_evidence_rows} evidence records.`,
+      const result = await apiFetch<GraphResponse>(
+        `/enterprise-graph/v1/${projectId}/${encodeURIComponent(domain)}?limit=500`,
       );
-      await refresh();
-    } catch (cause) {
-      setBuildError(
-        cause instanceof Error
-          ? cause.message
-          : "The Enterprise Knowledge Graph could not be built.",
-      );
+      setGraph(result);
+      if (result.nodes.length > 0) {
+        setSelectedNodeId((current) => current ?? result.nodes[0].node_id);
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load the enterprise graph.");
     } finally {
-      setBuilding(false);
+      setLoading(false);
     }
   }
 
-  return (
-    <div className="enterprise-explorer-shell">
-      <ExplorerStatistics
-        nodes={visibleGraph.nodes.length}
-        edges={visibleGraph.edges.length}
-        findings={visibleFindings}
-        recommendations={visibleRecommendations}
-      />
+  async function loadTraversal(nodeId: number, requestedDepth = depth) {
+    setNavigationLoading(true);
+    setError(null);
+    try {
+      const result = await apiFetch<TraversalResponse>(
+        `/enterprise-graph/v1/${projectId}/${encodeURIComponent(domain)}/nodes/${nodeId}/traversal?max_depth=${requestedDepth}&direction=BOTH`,
+      );
+      setTraversal(result);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to navigate the enterprise graph.");
+    } finally {
+      setNavigationLoading(false);
+    }
+  }
 
-      {(error || buildError) && (
-        <div className="friendly-alert explorer-error" role="alert">
-          <CircleAlert size={18} />
-          <span>{buildError || error}</span>
-          <button type="button" onClick={() => void refresh()}>Try again</button>
-        </div>
-      )}
+  useEffect(() => {
+    void loadGraph();
+  }, [projectId, domain]);
 
-      {buildMessage && (
-        <div className="friendly-alert" role="status">
-          <Sparkles size={18} />
-          <span>{buildMessage}</span>
-        </div>
-      )}
+  useEffect(() => {
+    if (selectedNodeId !== null) {
+      void loadTraversal(selectedNodeId);
+    }
+  }, [selectedNodeId]);
 
-      <section className="explorer-workbench">
-        <ExplorerFiltersPanel
-          filters={filters}
-          objectTypes={objectTypes}
-          relationshipTypes={relationshipTypes}
-          onChange={setFilters}
-          onReset={() => setFilters(DEFAULT_FILTERS)}
-        />
+  if (loading) {
+    return <section className="explorer-navigation-card">Loading enterprise graph…</section>;
+  }
 
-        <div className="explorer-graph-panel">
-          <div className="explorer-graph-header">
-            <div>
-              <span className="sap-eyebrow">Enterprise knowledge graph</span>
-              <h2>{domain} business relationships</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => void buildGraph()} disabled={building || loading}>
-                <Sparkles size={15} className={building ? "explorer-spin" : ""} />
-                {building ? "Building…" : "Build business graph"}
-              </button>
-              <button type="button" onClick={() => void refresh()} disabled={loading || building}>
-                <RefreshCw size={15} className={loading ? "explorer-spin" : ""} /> Refresh
-              </button>
-            </div>
-          </div>
-
-          {loading || building ? (
-            <div className="explorer-loading-state" aria-live="polite">
-              <span><Network size={24} /></span>
-              <strong>{building ? "Inferring business objects and relationships" : "Loading the enterprise graph"}</strong>
-              <p>
-                {building
-                  ? "Sapientia is grouping technical evidence into business-level knowledge…"
-                  : "Loading enterprise objects, relationships and intelligence signals…"}
-              </p>
-            </div>
-          ) : visibleGraph.nodes.length ? (
-            <EnterpriseGraph nodes={visibleGraph.nodes} edges={visibleGraph.edges} />
-          ) : (
-            <div className="explorer-empty-state">
-              <Network size={30} />
-              <h3>No business knowledge graph yet</h3>
-              <p>
-                Build the business graph to convert technical columns and semantic evidence into connected enterprise objects for {domain}.
-              </p>
-              <button type="button" onClick={() => void buildGraph()}>Build business graph</button>
-            </div>
-          )}
-        </div>
+  if (!graph || graph.nodes.length === 0) {
+    return (
+      <section className="explorer-navigation-card">
+        <h2>No graph objects available</h2>
+        <p>Build enterprise understanding and the knowledge graph before opening Explorer.</p>
+        {error && <p className="explorer-error">{error}</p>}
       </section>
-    </div>
+    );
+  }
+
+  return (
+    <section className="enterprise-navigation-shell">
+      <div className="explorer-navigation-summary">
+        <div><strong>{graph.statistics.node_count}</strong><span>Objects</span></div>
+        <div><strong>{graph.statistics.relationship_count}</strong><span>Relationships</span></div>
+        <div><strong>{graph.statistics.evidence_count}</strong><span>Evidence links</span></div>
+        <button type="button" onClick={() => void loadGraph()} aria-label="Refresh graph">
+          <RefreshCw size={16} /> Refresh
+        </button>
+      </div>
+
+      {error && <p className="explorer-error">{error}</p>}
+
+      <div className="enterprise-navigation-grid">
+        <aside className="explorer-object-list">
+          <div className="explorer-panel-title"><Network size={17} /> Enterprise objects</div>
+          {graph.nodes.map((node) => (
+            <button
+              type="button"
+              key={node.node_id}
+              className={node.node_id === selectedNodeId ? "active" : ""}
+              onClick={() => setSelectedNodeId(node.node_id)}
+            >
+              <CircleDot size={14} />
+              <span><strong>{node.canonical_name}</strong><small>{node.object_type.replaceAll("_", " ")}</small></span>
+              <ChevronRight size={15} />
+            </button>
+          ))}
+        </aside>
+
+        <main className="explorer-navigation-card">
+          {selectedNode && (
+            <>
+              <header className="explorer-node-header">
+                <div>
+                  <span className="sap-eyebrow">Selected enterprise object</span>
+                  <h2>{selectedNode.canonical_name}</h2>
+                  <p>{selectedNode.description || "No business description has been captured yet."}</p>
+                </div>
+                <div className="explorer-confidence">
+                  <strong>{selectedNode.confidence == null ? "—" : `${Math.round(selectedNode.confidence * 100)}%`}</strong>
+                  <span>Confidence</span>
+                </div>
+              </header>
+
+              <div className="explorer-depth-control">
+                <span>Navigation depth</span>
+                {[1, 2, 3].map((value) => (
+                  <button
+                    type="button"
+                    key={value}
+                    className={depth === value ? "active" : ""}
+                    onClick={() => {
+                      setDepth(value);
+                      void loadTraversal(selectedNode.node_id, value);
+                    }}
+                  >
+                    {value} hop{value > 1 ? "s" : ""}
+                  </button>
+                ))}
+              </div>
+
+              {navigationLoading ? (
+                <p>Loading connected enterprise objects…</p>
+              ) : (
+                <div className="explorer-traversal-list">
+                  {traversal?.nodes.filter((item) => item.node.node_id !== selectedNode.node_id).map((item) => {
+                    const relationships = traversal.relationships.filter(
+                      (relationship) => relationship.source_node_id === item.node.node_id || relationship.target_node_id === item.node.node_id,
+                    );
+                    return (
+                      <button type="button" key={item.node.node_id} onClick={() => setSelectedNodeId(item.node.node_id)}>
+                        <span className="explorer-hop">Hop {item.depth}</span>
+                        <span className="explorer-related-name">{item.node.canonical_name}</span>
+                        <span className="explorer-relationship-badges">
+                          {relationships.slice(0, 3).map((relationship) => (
+                            <em key={relationship.relationship_id}>{relationship.relationship_type.replaceAll("_", " ")}</em>
+                          ))}
+                        </span>
+                        <ChevronRight size={15} />
+                      </button>
+                    );
+                  })}
+                  {traversal && traversal.nodes.length === 1 && (
+                    <p>No connected objects were found within the selected depth.</p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      </div>
+    </section>
   );
 }
