@@ -20,7 +20,7 @@ function humanise(value: string) {
 function ObjectIcon({ objectType }: { objectType: string }) {
   if (objectType === "BUSINESS_METRIC") return <CircleDollarSign size={15} aria-hidden="true" />;
   if (objectType === "BUSINESS_PROCESS") return <Workflow size={15} aria-hidden="true" />;
-  if (objectType === "BUSINESS_CONCEPT") return <Network size={15} aria-hidden="true" />;
+  if (objectType === "BUSINESS_CONCEPT" || objectType === "CANONICAL_FIELD") return <Network size={15} aria-hidden="true" />;
   return <Boxes size={15} aria-hidden="true" />;
 }
 

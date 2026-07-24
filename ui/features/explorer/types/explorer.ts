@@ -1,3 +1,13 @@
+export type PhysicalEvidenceAsset = {
+  node_id: number;
+  label: string;
+  object_type: string;
+  schema: string | null;
+  table: string | null;
+  object_id: number | null;
+  confidence: number;
+};
+
 export type ExplorerNode = {
   id: string;
   enterprise_object_id: number;
@@ -17,6 +27,9 @@ export type ExplorerNode = {
     object_id: number | null;
   };
   metadata: Record<string, unknown>;
+  semantic_level?: "BUSINESS" | "CANONICAL" | "TECHNICAL";
+  member_node_ids?: number[];
+  evidence_assets?: PhysicalEvidenceAsset[];
 };
 
 export type ExplorerEdge = {

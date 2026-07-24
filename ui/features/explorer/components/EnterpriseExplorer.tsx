@@ -1,210 +1,102 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, CircleDot, Network, RefreshCw } from "lucide-react";
+import "@xyflow/react/dist/style.css";
+import { ChevronLeft, Database, Expand, Eye, FileText, Focus, Network, RefreshCw, Route, X } from "lucide-react";
+import { useMemo, useState } from "react";
 
-import { apiFetch } from "@/lib/api";
+import EnterpriseGraph from "@/features/explorer/components/EnterpriseGraph";
+import ExplorerFiltersPanel from "@/features/explorer/components/ExplorerFiltersPanel";
+import ExplorerStatistics from "@/features/explorer/components/ExplorerStatistics";
+import { useEnterpriseGraph } from "@/features/explorer/hooks/useEnterpriseGraph";
+import { businessFirstView, neighbourhood, projectSemanticGraph } from "@/features/explorer/lib/semantic-projection";
+import type { ExplorerFilters, ExplorerNode } from "@/features/explorer/types/explorer";
 
-type GraphNode = {
-  node_id: number;
-  canonical_name: string;
-  object_type: string;
-  description?: string | null;
-  confidence?: number | null;
-  incoming_count: number;
-  outgoing_count: number;
-  evidence_count: number;
-};
-
-type GraphRelationship = {
-  relationship_id: number;
-  source_node_id: number;
-  target_node_id: number;
-  relationship_type: string;
-  confidence: number;
-};
-
-type GraphResponse = {
-  nodes: GraphNode[];
-  relationships: GraphRelationship[];
-  statistics: {
-    node_count: number;
-    relationship_count: number;
-    evidence_count: number;
-  };
-};
-
-type TraversalResponse = {
-  centre_node_id: number;
-  max_depth: number;
-  direction: string;
-  nodes: Array<{ node: GraphNode; depth: number }>;
-  relationships: GraphRelationship[];
-};
+const DEFAULT_FILTERS: ExplorerFilters = { query: "", minimumConfidence: 0, objectTypes: [], relationshipTypes: [] };
+const humanise = (value: string) => value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 export default function EnterpriseExplorer({ projectId, domain }: { projectId: number; domain: string }) {
-  const [graph, setGraph] = useState<GraphResponse | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
-  const [traversal, setTraversal] = useState<TraversalResponse | null>(null);
-  const [depth, setDepth] = useState(2);
-  const [loading, setLoading] = useState(true);
-  const [navigationLoading, setNavigationLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ExplorerFilters>(DEFAULT_FILTERS);
+  const [selectedNode, setSelectedNode] = useState<ExplorerNode | null>(null);
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [depth, setDepth] = useState(1);
+  const [showTechnical, setShowTechnical] = useState(false);
+  const { graph: rawGraph, loading, error, refresh } = useEnterpriseGraph({ projectId, domain, minimumConfidence: filters.minimumConfidence });
 
-  const selectedNode = useMemo(
-    () => graph?.nodes.find((node) => node.node_id === selectedNodeId) ?? null,
-    [graph, selectedNodeId],
-  );
+  const graph = useMemo(() => rawGraph ? projectSemanticGraph(rawGraph) : null, [rawGraph]);
+  const objectTypes = useMemo(() => Object.keys(graph?.summary.object_types ?? {}).sort(), [graph]);
+  const relationshipTypes = useMemo(() => Object.keys(graph?.summary.relationship_types ?? {}).sort(), [graph]);
 
-  async function loadGraph() {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await apiFetch<GraphResponse>(
-        `/enterprise-graph/v1/${projectId}/${encodeURIComponent(domain)}?limit=500`,
-      );
-      setGraph(result);
-      if (result.nodes.length > 0) {
-        setSelectedNodeId((current) => current ?? result.nodes[0].node_id);
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load the enterprise graph.");
-    } finally {
-      setLoading(false);
-    }
+  const baseGraph = useMemo(() => {
+    if (!graph) return { nodes: [], edges: [] };
+    if (focusedNodeId) return neighbourhood(graph, focusedNodeId, depth);
+    if (showTechnical) return { nodes: graph.nodes, edges: graph.edges };
+    return businessFirstView(graph);
+  }, [depth, focusedNodeId, graph, showTechnical]);
+
+  const visibleGraph = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    const nodes = baseGraph.nodes.filter((node) => {
+      const matchesQuery = !query || [node.label, node.canonical_key, node.description ?? "", node.object_type].some((value) => value.toLowerCase().includes(query));
+      const matchesType = filters.objectTypes.length === 0 || filters.objectTypes.includes(node.object_type);
+      return matchesQuery && matchesType && node.confidence >= filters.minimumConfidence;
+    });
+    const ids = new Set(nodes.map((node) => node.id));
+    const edges = baseGraph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target) && edge.confidence >= filters.minimumConfidence && (filters.relationshipTypes.length === 0 || filters.relationshipTypes.includes(edge.relationship_type)));
+    return { nodes, edges };
+  }, [baseGraph, filters]);
+
+  function focus(node: ExplorerNode) {
+    setFocusedNodeId(node.id);
+    setSelectedNode(node);
   }
 
-  async function loadTraversal(nodeId: number, requestedDepth = depth) {
-    setNavigationLoading(true);
-    setError(null);
-    try {
-      const result = await apiFetch<TraversalResponse>(
-        `/enterprise-graph/v1/${projectId}/${encodeURIComponent(domain)}/nodes/${nodeId}/traversal?max_depth=${requestedDepth}&direction=BOTH`,
-      );
-      setTraversal(result);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to navigate the enterprise graph.");
-    } finally {
-      setNavigationLoading(false);
-    }
+  function resetBusinessView() {
+    setFocusedNodeId(null);
+    setShowTechnical(false);
   }
 
-  useEffect(() => {
-    void loadGraph();
-  }, [projectId, domain]);
+  if (loading) return <section className="explorer-loading-state"><span className="explorer-spin"><RefreshCw /></span><strong>Loading enterprise graph</strong><p>Building the business-first semantic view.</p></section>;
+  if (!graph || graph.nodes.length === 0) return <section className="explorer-empty-state"><Network size={28} /><h3>No enterprise graph available</h3><p>Build enterprise understanding and the knowledge graph before opening Explorer.</p>{error && <p className="explorer-error">{error}</p>}</section>;
 
-  useEffect(() => {
-    if (selectedNodeId !== null) {
-      void loadTraversal(selectedNodeId);
-    }
-  }, [selectedNodeId]);
+  const evidence = selectedNode?.evidence_assets ?? [];
 
-  if (loading) {
-    return <section className="explorer-navigation-card">Loading enterprise graph…</section>;
-  }
-
-  if (!graph || graph.nodes.length === 0) {
-    return (
-      <section className="explorer-navigation-card">
-        <h2>No graph objects available</h2>
-        <p>Build enterprise understanding and the knowledge graph before opening Explorer.</p>
-        {error && <p className="explorer-error">{error}</p>}
-      </section>
-    );
-  }
-
-  return (
-    <section className="enterprise-navigation-shell">
-      <div className="explorer-navigation-summary">
-        <div><strong>{graph.statistics.node_count}</strong><span>Objects</span></div>
-        <div><strong>{graph.statistics.relationship_count}</strong><span>Relationships</span></div>
-        <div><strong>{graph.statistics.evidence_count}</strong><span>Evidence links</span></div>
-        <button type="button" onClick={() => void loadGraph()} aria-label="Refresh graph">
-          <RefreshCw size={16} /> Refresh
-        </button>
-      </div>
-
-      {error && <p className="explorer-error">{error}</p>}
-
-      <div className="enterprise-navigation-grid">
-        <aside className="explorer-object-list">
-          <div className="explorer-panel-title"><Network size={17} /> Enterprise objects</div>
-          {graph.nodes.map((node) => (
-            <button
-              type="button"
-              key={node.node_id}
-              className={node.node_id === selectedNodeId ? "active" : ""}
-              onClick={() => setSelectedNodeId(node.node_id)}
-            >
-              <CircleDot size={14} />
-              <span><strong>{node.canonical_name}</strong><small>{node.object_type.replaceAll("_", " ")}</small></span>
-              <ChevronRight size={15} />
-            </button>
-          ))}
-        </aside>
-
-        <main className="explorer-navigation-card">
-          {selectedNode && (
-            <>
-              <header className="explorer-node-header">
-                <div>
-                  <span className="sap-eyebrow">Selected enterprise object</span>
-                  <h2>{selectedNode.canonical_name}</h2>
-                  <p>{selectedNode.description || "No business description has been captured yet."}</p>
-                </div>
-                <div className="explorer-confidence">
-                  <strong>{selectedNode.confidence == null ? "—" : `${Math.round(selectedNode.confidence * 100)}%`}</strong>
-                  <span>Confidence</span>
-                </div>
-              </header>
-
-              <div className="explorer-depth-control">
-                <span>Navigation depth</span>
-                {[1, 2, 3].map((value) => (
-                  <button
-                    type="button"
-                    key={value}
-                    className={depth === value ? "active" : ""}
-                    onClick={() => {
-                      setDepth(value);
-                      void loadTraversal(selectedNode.node_id, value);
-                    }}
-                  >
-                    {value} hop{value > 1 ? "s" : ""}
-                  </button>
-                ))}
-              </div>
-
-              {navigationLoading ? (
-                <p>Loading connected enterprise objects…</p>
-              ) : (
-                <div className="explorer-traversal-list">
-                  {traversal?.nodes.filter((item) => item.node.node_id !== selectedNode.node_id).map((item) => {
-                    const relationships = traversal.relationships.filter(
-                      (relationship) => relationship.source_node_id === item.node.node_id || relationship.target_node_id === item.node.node_id,
-                    );
-                    return (
-                      <button type="button" key={item.node.node_id} onClick={() => setSelectedNodeId(item.node.node_id)}>
-                        <span className="explorer-hop">Hop {item.depth}</span>
-                        <span className="explorer-related-name">{item.node.canonical_name}</span>
-                        <span className="explorer-relationship-badges">
-                          {relationships.slice(0, 3).map((relationship) => (
-                            <em key={relationship.relationship_id}>{relationship.relationship_type.replaceAll("_", " ")}</em>
-                          ))}
-                        </span>
-                        <ChevronRight size={15} />
-                      </button>
-                    );
-                  })}
-                  {traversal && traversal.nodes.length === 1 && (
-                    <p>No connected objects were found within the selected depth.</p>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </main>
-      </div>
-    </section>
-  );
+  return <section className="enterprise-explorer-shell">
+    <ExplorerStatistics nodes={graph.summary.node_count} edges={graph.summary.edge_count} findings={graph.summary.finding_count} recommendations={graph.summary.recommendation_count} />
+    {error && <p className="explorer-error">{error}</p>}
+    <div className={`explorer-workbench ${selectedNode ? "explorer-has-detail" : ""}`}>
+      <ExplorerFiltersPanel filters={filters} objectTypes={objectTypes} relationshipTypes={relationshipTypes} onChange={setFilters} onReset={() => setFilters(DEFAULT_FILTERS)} />
+      <main className="explorer-graph-panel">
+        <div className="explorer-graph-toolbar">
+          <div><strong>{focusedNodeId ? "Concept neighbourhood" : showTechnical ? "Full semantic and technical graph" : "Business view"}</strong><span>{visibleGraph.nodes.length} objects · {visibleGraph.edges.length} relationships · {rawGraph?.nodes.length ?? 0} source objects consolidated</span></div>
+          <div className="explorer-toolbar-actions">
+            {(focusedNodeId || showTechnical) && <button type="button" onClick={resetBusinessView}><ChevronLeft size={14} /> Business view</button>}
+            <button type="button" onClick={() => { setFocusedNodeId(null); setShowTechnical((value) => !value); }}><Database size={14} /> {showTechnical ? "Hide technical" : "Technical view"}</button>
+            <button type="button" onClick={() => void refresh()}><RefreshCw size={14} /> Refresh</button>
+          </div>
+        </div>
+        {visibleGraph.nodes.length ? <EnterpriseGraph nodes={visibleGraph.nodes} edges={visibleGraph.edges} selectedNodeId={selectedNode?.id ?? null} onNodeSelect={setSelectedNode} /> : <div className="explorer-empty-state"><Focus size={26} /><h3>No objects match this view</h3><p>Open the technical view or reset filters.</p></div>}
+      </main>
+      {selectedNode && <aside className="explorer-detail-panel">
+        <button className="explorer-detail-close" type="button" onClick={() => setSelectedNode(null)} aria-label="Close object details"><X size={16} /></button>
+        <span className="sap-eyebrow">{selectedNode.semantic_level === "CANONICAL" ? "Canonical enterprise meaning" : "Business object"}</span>
+        <h2>{selectedNode.label}</h2>
+        <span className="explorer-object-type">{humanise(selectedNode.object_type)}</span>
+        <p>{selectedNode.description || "No business description has been captured yet."}</p>
+        <div className="explorer-detail-metrics">
+          <div><strong>{Math.round(selectedNode.confidence * 100)}%</strong><span>Confidence</span></div>
+          <div><strong>{evidence.length || selectedNode.incoming_count}</strong><span>{evidence.length ? "Evidence" : "Incoming"}</span></div>
+          <div><strong>{selectedNode.outgoing_count}</strong><span>Outgoing</span></div>
+        </div>
+        <section className="explorer-detail-section">
+          <h3><Route size={15} /> Progressive exploration</h3>
+          <div className="explorer-depth-buttons">{[1,2,3].map((value) => <button key={value} type="button" className={depth === value ? "active" : ""} onClick={() => setDepth(value)}>{value} hop{value > 1 ? "s" : ""}</button>)}</div>
+          <button className="explorer-primary-action" type="button" onClick={() => focus(selectedNode)}><Expand size={15} /> Expand this neighbourhood</button>
+        </section>
+        <section className="explorer-detail-section">
+          <h3><Eye size={15} /> Evidence and provenance</h3>
+          {evidence.length ? <div className="explorer-evidence-list">{evidence.map((asset) => <article key={asset.node_id}><div><FileText size={14}/><span><strong>{asset.label}</strong><small>{[asset.schema, asset.table].filter(Boolean).join(".") || humanise(asset.object_type)}</small></span></div><em>{Math.round(asset.confidence * 100)}%</em></article>)}</div> : <dl><div><dt>Schema</dt><dd>{selectedNode.source.schema || "—"}</dd></div><div><dt>Table</dt><dd>{selectedNode.source.table || "—"}</dd></div><div><dt>Findings</dt><dd>{selectedNode.finding_count}</dd></div><div><dt>Recommendations</dt><dd>{selectedNode.recommendation_count}</dd></div></dl>}
+        </section>
+      </aside>}
+    </div>
+  </section>;
 }
