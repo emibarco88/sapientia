@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapientia.local/schemas/enterprise-intelligence-object-1.0.json",
+  "title": "Enterprise Intelligence Object",
+  "type": "object",
+  "required": ["intelligence_object_id", "assessment_id", "object_type", "object_key", "title", "status", "evidence_count"],
+  "properties": {
+    "intelligence_object_id": {"type": "integer", "minimum": 1},
+    "assessment_id": {"type": "integer", "minimum": 1},
+    "object_type": {"enum": ["OBSERVATION", "FINDING", "RISK", "OPPORTUNITY", "KPI", "RECOMMENDATION", "ROOT_CAUSE", "BUSINESS_IMPACT", "TREND", "ANOMALY", "INSIGHT"]},
+    "object_key": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "description": {"type": ["string", "null"]},
+    "interpretation": {"type": ["string", "null"]},
+    "status": {"enum": ["ACTIVE", "RESOLVED", "DISMISSED", "SUPERSEDED", "RETIRED"]},
+    "severity": {"type": ["string", "null"]},
+    "priority": {"type": ["string", "null"]},
+    "confidence_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "probability_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "impact_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "enterprise_object_id": {"type": ["integer", "null"]},
+    "evidence_count": {"type": "integer", "minimum": 0},
+    "attributes": {"type": "object", "additionalProperties": true}
+  },
+  "additionalProperties": false
+}

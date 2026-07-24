@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapientia.local/schemas/domain-narrative-1.0.json",
+  "title": "Domain Narrative",
+  "type": "object",
+  "required": ["experience_version", "narrative_schema_version", "project_id", "business_domain", "assessment", "executive_summary", "business_health", "sections", "provenance"],
+  "properties": {
+    "experience_version": {"const": "0.4"},
+    "narrative_schema_version": {"const": "1.0"},
+    "project_id": {"type": "integer", "minimum": 1},
+    "business_domain": {"type": "string", "minLength": 1},
+    "assessment": {"type": "object"},
+    "executive_summary": {"type": "object"},
+    "business_health": {"$ref": "business_health.schema.json"},
+    "sections": {
+      "type": "object",
+      "required": ["current_state", "what_changed", "why_it_changed", "risks", "opportunities", "recommendations"],
+      "properties": {
+        "current_state": {"type": "array"},
+        "what_changed": {"type": "array"},
+        "why_it_changed": {"type": "array"},
+        "risks": {"type": "array"},
+        "opportunities": {"type": "array"},
+        "recommendations": {"type": "array"}
+      }
+    },
+    "comparison_available": {"type": "boolean"},
+    "suggested_questions": {"type": "array", "items": {"type": "string"}},
+    "provenance": {"type": "object"}
+  },
+  "additionalProperties": false
+}

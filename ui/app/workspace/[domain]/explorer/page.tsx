@@ -1,37 +1,31 @@
 "use client";
 
-import { Network, Sparkles } from "lucide-react";
+import { Network, Search, Sparkles } from "lucide-react";
 import { useParams } from "next/navigation";
-
 import EnterpriseExplorer from "@/features/explorer/components/EnterpriseExplorer";
 import AppShell from "@/components/layout/AppShell";
-import WorkspaceTabs from "@/components/workspace/WorkspaceTabs";
 
 export default function EnterpriseExplorerPage() {
-  const params = useParams();
-  const domain = String(params.domain || "").toUpperCase();
+  const params = useParams<{ domain: string }>();
+  const domain = decodeURIComponent(params.domain || "").toUpperCase();
   const projectId = Number(process.env.NEXT_PUBLIC_SAPIENTIA_PROJECT_ID || "1");
 
   return (
     <AppShell>
-      <div className="sap-page explorer-page">
-        <WorkspaceTabs domain={domain} />
-
-        <header className="sap-page-header explorer-page-header">
-          <div className="sap-page-header-copy">
-            <span className="sap-eyebrow">Enterprise Explorer</span>
-            <h1 className="sap-page-title">Explore how {domain} works</h1>
-            <p className="sap-page-description">
-              Navigate enterprise objects, operational relationships and intelligence signals in one evidence-ready view.
-            </p>
+      <div className="vnext-page">
+        <header className="vnext-domain-hero">
+          <div>
+            <span className="vnext-eyebrow">Explore {domain}</span>
+            <h1>Follow the evidence behind the business.</h1>
+            <p>Search for a business concept first, then inspect its evidence, relationships and graph only when deeper investigation is useful.</p>
           </div>
-          <div className="explorer-header-badge">
-            <Network size={17} />
-            <span><strong>Knowledge graph</strong><small>Milestone 1</small></span>
-            <Sparkles size={15} />
-          </div>
+          <span className="vnext-context-pill"><Network size={14} /> Evidence-ready knowledge</span>
         </header>
-
+<section className="vnext-explorer-intro">
+          <Search size={20} />
+          <div><strong>Search first. Graph second.</strong><span>Select a result to reveal its business meaning, supporting evidence and connected enterprise objects.</span></div>
+          <Sparkles size={17} />
+        </section>
         <EnterpriseExplorer projectId={projectId} domain={domain} />
       </div>
     </AppShell>

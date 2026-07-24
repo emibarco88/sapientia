@@ -8,7 +8,9 @@ existing explainable intelligence report.
 
 from __future__ import annotations
 
+import hashlib
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import text
@@ -23,6 +25,18 @@ from sapientia.services.enterprise_intelligence_service import (
 from sapientia.services.enterprise_intelligence_v2_service import (
     EnterpriseIntelligenceV2Service,
 )
+from sapientia.services.intelligence.assessment_service import (
+    EnterpriseIntelligenceAssessmentService,
+)
+from sapientia.services.intelligence.intelligence_object_service import (
+    EnterpriseIntelligenceObjectService,
+)
+from sapientia.services.intelligence.assessment_evolution_service import (
+    EnterpriseIntelligenceEvolutionService,
+)
+from sapientia.services.knowledge.enterprise_knowledge_version_service import (
+    EnterpriseKnowledgeVersionService,
+)
 
 
 class EnterpriseIntelligenceGenerationService:
@@ -31,6 +45,7 @@ class EnterpriseIntelligenceGenerationService:
         project_id: int,
         business_domain: str,
         persist: bool = True,
+        force: bool = False,
     ) -> dict[str, Any]:
         normalized_domain = str(
             business_domain or ""
@@ -57,6 +72,38 @@ class EnterpriseIntelligenceGenerationService:
             raise ValueError(
                 "Complete Build Understanding before generating intelligence."
             )
+
+        knowledge_version = EnterpriseKnowledgeVersionService().resolve_current(
+            project_id=project_id,
+            business_domain=normalized_domain,
+        )
+        duplicate = self._get_duplicate_assessment_by_knowledge_version(
+            project_id=project_id,
+            business_domain=normalized_domain,
+            knowledge_version_id=int(knowledge_version["knowledge_version_id"]),
+        )
+
+        if duplicate and not force:
+            latest_version = duplicate.get("assessment_version")
+            latest_id = duplicate.get("assessment_id")
+            message = (
+                f"No relevant knowledge changes were detected since "
+                f"Assessment Version {latest_version}. "
+                "A duplicate assessment and report were not created."
+            )
+            return {
+                "status": "NO_CHANGE",
+                "duplicate_prevented": True,
+                "message": message,
+                "project_id": project_id,
+                "business_domain": normalized_domain,
+                "assessment_id": latest_id,
+                "assessment_version": latest_version,
+                "knowledge_fingerprint": knowledge_version["knowledge_fingerprint"],
+                "knowledge_version_id": knowledge_version["knowledge_version_id"],
+                "knowledge_version": knowledge_version["knowledge_version"],
+                "latest_assessment": duplicate,
+            }
 
         self._set_domain_intelligence_status(
             project_id=project_id,
@@ -109,8 +156,13 @@ class EnterpriseIntelligenceGenerationService:
                 message=message,
             )
 
-            return {
+            generation_result = {
                 "status": "COMPLETED",
+                "generation_reason": "FORCED" if force else "USER_REQUESTED",
+                "knowledge_fingerprint": knowledge_version["knowledge_fingerprint"],
+                "knowledge_version_id": knowledge_version["knowledge_version_id"],
+                "knowledge_version": knowledge_version["knowledge_version"],
+                "knowledge_snapshot": knowledge_version.get("snapshot_json"),
                 "message": message,
                 "project_id": project_id,
                 "business_domain": normalized_domain,
@@ -132,6 +184,29 @@ class EnterpriseIntelligenceGenerationService:
                 "intelligence": intelligence,
                 "report": report,
             }
+
+            assessment = EnterpriseIntelligenceAssessmentService().create_from_generation(
+                project_id=project_id,
+                business_domain=normalized_domain,
+                generation=generation_result,
+            )
+            generation_result["assessment_id"] = assessment.get("assessment_id")
+            generation_result["assessment_version"] = assessment.get("assessment_version")
+            generation_result["assessment"] = assessment
+
+            structured_intelligence = EnterpriseIntelligenceObjectService().materialise_from_generation(
+                assessment_id=int(assessment["assessment_id"]),
+                project_id=project_id,
+                generation=generation_result,
+            )
+            generation_result["structured_intelligence"] = structured_intelligence
+            generation_result["assessment_evolution"] = (
+                EnterpriseIntelligenceEvolutionService().compare_with_previous(
+                    current_assessment_id=int(assessment["assessment_id"]),
+                    project_id=project_id,
+                )
+            )
+            return generation_result
 
         except Exception as exc:
             import traceback
@@ -157,6 +232,119 @@ class EnterpriseIntelligenceGenerationService:
 
 
 
+
+    def _get_knowledge_snapshot(
+        self,
+        project_id: int,
+        business_domain: str,
+    ) -> dict[str, Any]:
+        """
+        Build a deterministic snapshot of the domain knowledge inputs.
+
+        The fingerprint deliberately excludes intelligence outputs, so an
+        assessment run cannot make its own input snapshot appear changed.
+        """
+        engine = get_engine()
+
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("""
+                    SELECT
+                        c.connector_id,
+                        c.connector_type_id,
+                        ct.connector_code,
+                        c.connector_status,
+                        cd.dataset_id,
+                        cd.is_active,
+                        cd.last_discovered_at,
+                        cls.discovery_status,
+                        cls.understanding_status,
+                        cls.last_discovered_at AS lifecycle_last_discovered_at,
+                        cls.last_understanding_at
+                    FROM ekr_connection.connector c
+                    JOIN ekr_business.business_domain bd
+                      ON bd.business_domain_id = c.business_domain_id
+                    JOIN ekr_connection.connector_type ct
+                      ON ct.connector_type_id = c.connector_type_id
+                    LEFT JOIN ekr_connection.connector_dataset cd
+                      ON cd.connector_id = c.connector_id
+                    LEFT JOIN ekr_connection.connector_lifecycle_state cls
+                      ON cls.connector_id = c.connector_id
+                    WHERE c.project_id = :project_id
+                      AND UPPER(bd.domain_code) = UPPER(:business_domain)
+                    ORDER BY c.connector_id, cd.dataset_id
+                """),
+                {
+                    "project_id": project_id,
+                    "business_domain": business_domain,
+                },
+            ).mappings().all()
+
+        serialisable_rows: list[dict[str, Any]] = []
+        changed_values: list[datetime] = []
+
+        for row in rows:
+            item = dict(row)
+            for key in (
+                "last_discovered_at",
+                "lifecycle_last_discovered_at",
+                "last_understanding_at",
+            ):
+                value = item.get(key)
+                if isinstance(value, datetime):
+                    if value.tzinfo is None:
+                        value = value.replace(tzinfo=timezone.utc)
+                    changed_values.append(value)
+                    item[key] = value.isoformat()
+                elif value is not None:
+                    item[key] = str(value)
+            serialisable_rows.append(item)
+
+        canonical = json.dumps(
+            {
+                "project_id": project_id,
+                "business_domain": business_domain,
+                "knowledge_inputs": serialisable_rows,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        changed_at = max(changed_values).isoformat() if changed_values else None
+
+        return {
+            "schema_version": "1.0",
+            "fingerprint": fingerprint,
+            "knowledge_changed_at": changed_at,
+            "connector_dataset_rows": len(serialisable_rows),
+        }
+
+    def _get_duplicate_assessment_by_knowledge_version(
+        self,
+        project_id: int,
+        business_domain: str,
+        knowledge_version_id: int,
+    ) -> dict[str, Any]:
+        engine = get_engine()
+        with engine.connect() as connection:
+            row = connection.execute(text("""
+                SELECT a.assessment_id,a.assessment_version,a.assessment_status,
+                       a.assessment_title,a.generated_at,a.intelligence_report_id,
+                       a.assessment_json,a.knowledge_version_id,kv.knowledge_version
+                FROM ekr_intelligence.enterprise_intelligence_assessment a
+                JOIN ekr_business.business_domain bd
+                  ON bd.business_domain_id=a.business_domain_id
+                LEFT JOIN ekr_knowledge.enterprise_knowledge_version kv
+                  ON kv.knowledge_version_id=a.knowledge_version_id
+                WHERE a.project_id=:project_id
+                  AND UPPER(bd.domain_code)=UPPER(:business_domain)
+                  AND a.knowledge_version_id=:knowledge_version_id
+                ORDER BY a.assessment_version DESC,a.assessment_id DESC
+                LIMIT 1
+            """), {"project_id":project_id,"business_domain":business_domain,
+                    "knowledge_version_id":knowledge_version_id}).mappings().fetchone()
+        return dict(row) if row else {}
 
     def _persist_ai_knowledge(
         self,

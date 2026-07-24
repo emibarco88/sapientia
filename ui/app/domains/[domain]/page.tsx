@@ -1,304 +1,108 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ArrowRight, CircleAlert, Clock3, FileText, Lightbulb, Network, ShieldCheck, Sparkles, Target, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
+import AppShell from "@/components/layout/AppShell";
 import { apiFetch } from "@/lib/api";
-import Sidebar from "@/components/layout/Sidebar";
-import RightPanel from "@/components/layout/RightPanel";
-import MetricCard from "@/components/ui/MetricCard";
 
-type DomainSummary = {
-  datasets?: number;
-  semantic_columns?: number;
-  enterprise_concepts?: number;
-  findings?: number;
+type Workspace = {
+  domain?: { domain_code?: string; domain_name?: string; description?: string | null };
+  summary?: { datasets?: number; enterprise_concepts?: number; findings?: number; reports?: number };
+  findings?: Array<{ intelligence_finding_id: number | string; finding_title?: string; finding_description?: string; finding_interpretation?: string; severity_level?: string; finding_type?: string; created_at?: string | null }>;
+  concepts?: Array<{ enterprise_concept_id: number | string; concept_name?: string; concept_description?: string; confidence_score?: number | string; evidence_count?: number }>;
+  latest_report?: { report_title?: string; summary_text?: string | null; created_at?: string | null; intelligence_report_id?: number } | null;
 };
+type Assessment = { assessment_id: number; assessment_version: number; assessment_status: string; assessment_title: string; executive_summary?: string | null; overall_confidence?: number | null; generated_at: string; };
+type IntelligenceObject = { intelligence_object_id: number; object_type: string; title: string; description?: string | null; severity?: string | null; priority?: string | null; confidence_score?: number | null; evidence_count: number; };
 
-type EnterpriseConcept = {
-  enterprise_concept_id: number | string;
-  concept_name?: string;
-  concept_type?: string;
-  confidence_score?: number | string;
-  concept_description?: string;
-  evidence_count?: number;
-};
+const objectIcon = (type: string) => type === "RISK" ? <CircleAlert size={17} /> : type === "RECOMMENDATION" ? <Target size={17} /> : type === "OPPORTUNITY" ? <TrendingUp size={17} /> : <Lightbulb size={17} />;
 
-type IntelligenceFinding = {
-  intelligence_finding_id: number | string;
-  finding_type?: string;
-  severity_level?: string;
-  finding_title?: string;
-  finding_description?: string;
-  finding_interpretation?: string;
-};
-
-type DomainWorkspaceResponse = {
-  summary?: DomainSummary;
-  concepts?: EnterpriseConcept[];
-  findings?: IntelligenceFinding[];
-};
-
-export default function DomainPage() {
-  const params = useParams();
-  const domain = String(params.domain);
-
-  const [summary, setSummary] = useState<DomainSummary>({});
-  const [concepts, setConcepts] = useState<EnterpriseConcept[]>([]);
-  const [findings, setFindings] = useState<IntelligenceFinding[]>([]);
+export default function BusinessDomainPage() {
+  const params = useParams<{ domain: string }>();
+  const domain = decodeURIComponent(params.domain || "").toUpperCase();
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [objects, setObjects] = useState<IntelligenceObject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadDomain() {
-      setLoading(true);
-      setError("");
-
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const workspaceData = await apiFetch<Workspace>(`/domains/${encodeURIComponent(domain)}/workspace`);
+      setWorkspace(workspaceData);
       try {
-        const data = await apiFetch<DomainWorkspaceResponse>(
-          `/domains/${domain}/workspace`,
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        setSummary(data.summary ?? {});
-        setConcepts(data.concepts ?? []);
-        setFindings(data.findings ?? []);
-      } catch (err) {
-        if (cancelled) {
-          return;
-        }
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Sapientia could not load this business domain.",
-        );
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadDomain();
-
-    return () => {
-      cancelled = true;
-    };
+        const history = await apiFetch<{ assessments: Assessment[] }>(`/intelligence/assessments/domain/${encodeURIComponent(domain)}?project_id=1`);
+        const list = history.assessments || [];
+        setAssessments(list);
+        if (list[0]) {
+          const objectData = await apiFetch<{ objects: IntelligenceObject[] }>(`/intelligence/assessments/${list[0].assessment_id}/objects?project_id=1`);
+          setObjects(objectData.objects || []);
+        } else setObjects([]);
+      } catch { setAssessments([]); setObjects([]); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "This business domain could not be loaded."); }
+    finally { setLoading(false); }
   }, [domain]);
 
+  useEffect(() => { void load(); }, [load]);
+
+  const name = workspace?.domain?.domain_name || domain;
+  const latest = assessments[0];
+  const findings = objects.filter((item) => ["FINDING", "OBSERVATION", "ROOT_CAUSE", "BUSINESS_IMPACT"].includes(item.object_type));
+  const risks = objects.filter((item) => item.object_type === "RISK");
+  const opportunities = objects.filter((item) => item.object_type === "OPPORTUNITY");
+  const recommendations = objects.filter((item) => item.object_type === "RECOMMENDATION");
+  const confidence = latest?.overall_confidence != null ? Math.round(Number(latest.overall_confidence) * 100) : null;
+  const generated = latest?.generated_at || workspace?.latest_report?.created_at;
+  const summary = latest?.executive_summary || workspace?.latest_report?.summary_text || workspace?.domain?.description || `Sapientia is building an evidence-backed understanding of ${name}.`;
+  const timeline = useMemo(() => [
+    ...(generated ? [{ date: generated, title: "Latest enterprise assessment generated", detail: `${objects.length} intelligence items were considered.` }] : []),
+    ...recommendations.slice(0, 2).map((item) => ({ date: generated || "", title: item.title, detail: "Recommendation added to the current assessment." })),
+    ...(workspace?.findings || []).slice(0, 2).map((item) => ({ date: item.created_at || "", title: item.finding_title || "Finding identified", detail: item.finding_description || "New evidence-backed finding." })),
+  ].slice(0, 5), [generated, objects.length, recommendations, workspace?.findings]);
+
   return (
-    <main className="min-h-screen bg-[#f6f8fc]">
-      <Sidebar />
-      <RightPanel />
+    <AppShell>
+      <div className="vnext-page vnext-domain-page">
+        <header className="vnext-domain-hero">
+          <div><span className="vnext-eyebrow">Business domain</span><h1>{name}</h1><p>{workspace?.domain?.description || `A living view of what Sapientia currently understands about ${name}.`}</p></div>
+        </header>
 
-      <section className="ml-72 mr-96 p-10">
-        <Link
-          href="/dashboard"
-          className="text-sm font-medium text-indigo-600"
-        >
-          ← Back to dashboard
-        </Link>
-
-        <div className="mb-10 mt-6">
-          <p className="text-sm font-semibold uppercase tracking-widest text-indigo-600">
-            Business Domain
-          </p>
-
-          <h1 className="mt-2 text-5xl font-bold text-slate-950">
-            {domain}
-          </h1>
-
-          <p className="mt-3 text-slate-500">
-            Enterprise concepts, findings and intelligence generated by
-            Sapientia.
-          </p>
-        </div>
-
-        {error && (
-          <section className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-5">
-            <p className="font-semibold text-red-800">
-              Sapientia could not load this domain
-            </p>
-            <p className="mt-2 text-sm text-red-700">{error}</p>
-          </section>
-        )}
-
-        {loading ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-            <p className="text-slate-500">
-              Loading enterprise knowledge and intelligence...
-            </p>
-          </section>
-        ) : (
+        {error && <div className="vnext-alert">{error}</div>}
+        {loading ? <div className="vnext-loading">Understanding {name}…</div> : (
           <>
-            <div className="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-4">
-              <MetricCard
-                label="Datasets"
-                value={summary.datasets ?? 0}
-              />
-              <MetricCard
-                label="Semantic Columns"
-                value={summary.semantic_columns ?? 0}
-              />
-              <MetricCard
-                label="Concepts"
-                value={summary.enterprise_concepts ?? 0}
-              />
-              <MetricCard
-                label="Findings"
-                value={summary.findings ?? 0}
-              />
-            </div>
+<section className="vnext-assessment-hero">
+              <div className="vnext-assessment-copy"><span className="vnext-eyebrow">Current business assessment</span><h2>{latest?.assessment_title || workspace?.latest_report?.report_title || `${name} business assessment`}</h2><p>{summary}</p><div className="vnext-assessment-meta">{generated && <span><Clock3 size={14} /> Updated {new Date(generated).toLocaleString("en-AU")}</span>}{latest && <span><ShieldCheck size={14} /> Version {latest.assessment_version}</span>}{confidence != null && <span>{confidence}% confidence</span>}</div></div>
+              <div className="vnext-health-summary"><span>Current signal</span><strong>{risks.length > 2 ? "Needs attention" : risks.length > 0 ? "Review advised" : "Stable"}</strong><small>{risks.length} risks · {recommendations.length} recommendations</small></div>
+            </section>
 
-            <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
-              <Panel title="Enterprise Concepts">
-                {concepts.length > 0 ? (
-                  <div className="space-y-4">
-                    {concepts.map((concept) => (
-                      <div
-                        key={concept.enterprise_concept_id}
-                        className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-indigo-300"
-                      >
-                        <div className="flex justify-between gap-4">
-                          <div>
-                            <h3 className="text-xl font-bold text-slate-900">
-                              {concept.concept_name ?? "Unnamed concept"}
-                            </h3>
+            <section className="vnext-business-signals">
+              <div className="vnext-section-heading"><div><span className="vnext-eyebrow">What matters now</span><h2>Business signals</h2><p>Prioritised explanations rather than technical platform statistics.</p></div></div>
+              <div className="vnext-signal-grid">
+                <Signal title="Key findings" icon={<Lightbulb size={19} />} items={findings} empty="No material findings have been identified yet." />
+                <Signal title="Risks requiring attention" icon={<CircleAlert size={19} />} items={risks} empty="No priority risks have been identified." />
+                <Signal title="Opportunities" icon={<TrendingUp size={19} />} items={opportunities} empty="No opportunities have been identified yet." />
+              </div>
+            </section>
 
-                            {concept.concept_type && (
-                              <p className="mt-1 text-sm font-medium text-indigo-600">
-                                {concept.concept_type}
-                              </p>
-                            )}
-                          </div>
+            <section className="vnext-recommendations">
+              <div className="vnext-section-heading"><div><span className="vnext-eyebrow">What to do next</span><h2>Recommendations</h2></div><Link href={`/workspace/${domain}/intelligence`}>Review full assessment <ArrowRight size={15} /></Link></div>
+              {recommendations.length ? <div className="vnext-recommendation-list">{recommendations.slice(0, 6).map((item, index) => <article key={item.intelligence_object_id}><span>{index + 1}</span><div><h3>{item.title}</h3><p>{item.description || "Review this recommended action in the full assessment."}</p><small>{item.priority ? `${item.priority} priority` : "Recommended action"} · {item.evidence_count || 0} evidence references</small></div></article>)}</div> : <div className="vnext-soft-empty">Recommendations will appear when Sapientia identifies evidence-backed actions.</div>}
+            </section>
 
-                          {concept.confidence_score !== undefined && (
-                            <span className="h-fit rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
-                              {concept.confidence_score}
-                            </span>
-                          )}
-                        </div>
-
-                        {concept.concept_description && (
-                          <p className="mt-4 leading-6 text-slate-600">
-                            {concept.concept_description}
-                          </p>
-                        )}
-
-                        <p className="mt-4 text-sm text-slate-400">
-                          Evidence records: {concept.evidence_count ?? 0}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyMessage>
-                    No enterprise concepts are available for this domain yet.
-                  </EmptyMessage>
-                )}
-              </Panel>
-
-              <Panel title="AI Advisor">
-                <div className="mb-5 rounded-2xl bg-gradient-to-r from-indigo-50 to-fuchsia-50 p-6">
-                  <h3 className="mb-2 font-bold text-slate-900">
-                    Ask about {domain}
-                  </h3>
-
-                  <p className="text-slate-600">
-                    Sapientia answers using enterprise concepts, findings,
-                    relationships and supporting intelligence.
-                  </p>
-                </div>
-
-                <Link
-                  href={`/domains/${domain}/ask`}
-                  className="block rounded-xl bg-indigo-600 py-3 text-center font-semibold text-white transition hover:bg-indigo-500"
-                >
-                  Ask Sapientia
-                </Link>
-              </Panel>
-            </div>
-
-            <Panel title="Enterprise Intelligence Findings">
-              {findings.length > 0 ? (
-                <div className="space-y-3">
-                  {findings.slice(0, 20).map((finding) => (
-                    <div
-                      key={finding.intelligence_finding_id}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
-                    >
-                      <div className="mb-2 flex justify-between gap-4">
-                        <p className="text-sm font-semibold text-indigo-600">
-                          {finding.finding_type ?? "Insight"}
-                        </p>
-
-                        {finding.severity_level && (
-                          <p className="rounded-full bg-slate-200 px-3 py-1 text-xs text-slate-600">
-                            {finding.severity_level}
-                          </p>
-                        )}
-                      </div>
-
-                      <h3 className="font-bold text-slate-900">
-                        {finding.finding_title ?? "Untitled finding"}
-                      </h3>
-
-                      {finding.finding_description && (
-                        <p className="mt-2 leading-6 text-slate-600">
-                          {finding.finding_description}
-                        </p>
-                      )}
-
-                      {finding.finding_interpretation && (
-                        <p className="mt-3 text-sm text-slate-500">
-                          <span className="font-semibold">
-                            Why it matters:
-                          </span>{" "}
-                          {finding.finding_interpretation}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyMessage>
-                  No intelligence findings are available for this domain yet.
-                </EmptyMessage>
-              )}
-            </Panel>
+            <section className="vnext-two-column">
+              <article className="vnext-evidence-panel"><div className="vnext-section-heading"><div><span className="vnext-eyebrow">Why Sapientia believes this</span><h2>Evidence and business understanding</h2></div></div><p>The current view is grounded in {workspace?.summary?.datasets ?? 0} datasets and {workspace?.summary?.enterprise_concepts ?? 0} enterprise concepts.</p><div className="vnext-concept-list">{(workspace?.concepts || []).slice(0, 5).map((concept) => <div key={concept.enterprise_concept_id}><FileText size={16} /><span><strong>{concept.concept_name || "Business concept"}</strong><small>{concept.evidence_count || 0} evidence references</small></span></div>)}</div><Link href={`/workspace/${domain}/explorer`}>Explore evidence and relationships <ArrowRight size={15} /></Link></article>
+              <article className="vnext-timeline"><div className="vnext-section-heading"><div><span className="vnext-eyebrow">Enterprise timeline</span><h2>How {name} is evolving</h2></div></div>{timeline.length ? timeline.map((item, index) => <div className="vnext-timeline-item" key={`${item.title}-${index}`}><span /><div><time>{item.date ? new Date(item.date).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : "Current"}</time><h3>{item.title}</h3><p>{item.detail}</p></div></div>) : <div className="vnext-soft-empty">Change history will appear as assessments evolve.</div>}</article>
+            </section>
           </>
         )}
-      </section>
-    </main>
+      </div>
+    </AppShell>
   );
 }
 
-function Panel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-5 text-xl font-bold text-slate-900">{title}</h2>
-      {children}
-    </div>
-  );
-}
-
-function EmptyMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-      {children}
-    </div>
-  );
+function Signal({ title, icon, items, empty }: { title: string; icon: React.ReactNode; items: IntelligenceObject[]; empty: string }) {
+  return <article className="vnext-signal-card"><div className="vnext-signal-heading"><span>{icon}</span><h3>{title}</h3><strong>{items.length}</strong></div>{items.length ? <div>{items.slice(0, 4).map((item) => <div className="vnext-signal-item" key={item.intelligence_object_id}><h4>{item.title}</h4><p>{item.description || "No additional explanation was provided."}</p><small>{item.severity ? `${item.severity} severity · ` : ""}{item.evidence_count || 0} evidence</small></div>)}</div> : <p className="vnext-signal-empty">{empty}</p>}</article>;
 }

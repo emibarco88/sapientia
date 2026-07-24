@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapientia.local/schemas/business-object-profile-1.0.json",
+  "title": "Business Object Profile",
+  "type": "object",
+  "required": ["enterprise_object_id", "project_id", "business_domain", "name", "object_type", "definition", "current_status", "related_intelligence", "evidence", "relationships", "suggested_questions"],
+  "properties": {
+    "enterprise_object_id": {"type": "integer", "minimum": 1},
+    "project_id": {"type": "integer", "minimum": 1},
+    "business_domain": {"type": "string"},
+    "name": {"type": "string"},
+    "object_type": {"type": "string"},
+    "definition": {"type": "string"},
+    "aliases": {"type": "array", "items": {"type": "string"}},
+    "business_importance": {"type": ["string", "null"]},
+    "current_status": {"$ref": "business_health.schema.json"},
+    "related_intelligence": {"type": "array"},
+    "evidence": {"type": "array"},
+    "relationships": {"type": "array"},
+    "recent_changes": {"type": "array"},
+    "suggested_questions": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

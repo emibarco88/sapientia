@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapientia.local/schemas/business-health-1.0.json",
+  "title": "Business Health",
+  "type": "object",
+  "required": ["label", "explanation", "confidence", "evidence_coverage", "positive_drivers", "negative_drivers"],
+  "properties": {
+    "label": {"enum": ["HEALTHY", "STABLE", "NEEDS_ATTENTION", "CRITICAL", "INSUFFICIENT_EVIDENCE"]},
+    "score": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "explanation": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "evidence_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+    "positive_drivers": {"type": "array", "items": {"type": "object"}},
+    "negative_drivers": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": false
+}

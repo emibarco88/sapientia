@@ -1025,7 +1025,7 @@ export default function SourcesPage() {
                                 )}
                               </div>
 
-                              <Badge tone="slate">
+                              <Badge tone="neutral">
                                 {
                                   dataset.column_count
                                   || 0

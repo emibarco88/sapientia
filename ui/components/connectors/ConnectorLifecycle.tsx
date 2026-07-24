@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
-
 import {
   Check,
   Database,
-  ExternalLink,
   Lightbulb,
   Loader2,
+  Play,
   PlugZap,
-  Sparkles,
 } from "lucide-react";
 
 import {
@@ -82,28 +79,6 @@ type UnderstandingResponse = {
 };
 
 
-type IntelligenceResponse = {
-  status: string;
-  message: string;
-
-  project_id: number;
-  business_domain: string;
-
-  intelligence_report_id:
-    number | null;
-
-  datasets_analysed: number;
-  semantic_columns: number;
-  knowledge_items: number;
-  intelligence_links: number;
-  enterprise_concepts: number;
-  findings_generated: number;
-  lineage_records: number;
-
-  summary_text:
-    string | null;
-};
-
 
 export default function ConnectorLifecycle({
   connectorId,
@@ -139,7 +114,7 @@ export default function ConnectorLifecycle({
     | "test"
     | "discovery"
     | "understanding"
-    | "intelligence"
+    | "pipeline"
     | null
   >(null);
 
@@ -161,10 +136,13 @@ export default function ConnectorLifecycle({
   >(null);
 
   const [
-    intelligenceSummary,
-    setIntelligenceSummary,
+    pipelineStep,
+    setPipelineStep,
   ] = useState<
-    IntelligenceResponse | null
+    | "connection"
+    | "discovery"
+    | "understanding"
+    | null
   >(null);
 
 
@@ -183,7 +161,6 @@ export default function ConnectorLifecycle({
     setError("");
     setSuccess("");
     setUnderstandingSummary(null);
-    setIntelligenceSummary(null);
 
     void loadLifecycle().catch(
       (cause) => {
@@ -237,7 +214,6 @@ export default function ConnectorLifecycle({
     setError("");
     setSuccess("");
     setUnderstandingSummary(null);
-    setIntelligenceSummary(null);
 
     try {
       await onDiscoverAssets();
@@ -262,25 +238,88 @@ export default function ConnectorLifecycle({
   }
 
 
+  async function buildUnderstanding(): Promise<UnderstandingResponse> {
+    return apiFetch<UnderstandingResponse>(
+      `/sources/${connectorId}/understanding`,
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          refresh_concepts: true,
+        }),
+      }
+    );
+  }
+
+
+  async function runFullKnowledgePipeline() {
+    let currentStage:
+      | "connection"
+      | "discovery"
+      | "understanding" = "connection";
+
+    setActiveAction("pipeline");
+    setPipelineStep(currentStage);
+    setError("");
+    setSuccess("");
+    setUnderstandingSummary(null);
+
+    try {
+      await onTestConnection();
+      await refreshAfterAction();
+
+      currentStage = "discovery";
+      setPipelineStep(currentStage);
+      await onDiscoverAssets();
+      await refreshAfterAction();
+
+      currentStage = "understanding";
+      setPipelineStep(currentStage);
+      const response = await buildUnderstanding();
+
+      setUnderstandingSummary(response);
+      await refreshAfterAction();
+
+      setSuccess(
+        "Enterprise Knowledge was built successfully. Connection, discovery and understanding completed."
+      );
+
+    } catch (cause) {
+      const stage =
+        currentStage === "connection"
+          ? "Connection validation"
+          : currentStage === "discovery"
+            ? "Asset Discovery"
+            : "Enterprise Understanding";
+
+      setError(
+        `${stage} failed. The pipeline stopped and no later steps were executed. ${getMessage(
+          cause,
+          "Unable to build Enterprise Knowledge."
+        )}`
+      );
+
+      try {
+        await loadLifecycle();
+      } catch {
+        // Keep the original pipeline error visible.
+      }
+
+    } finally {
+      setPipelineStep(null);
+      setActiveAction(null);
+    }
+  }
+
+
   async function runUnderstanding() {
     setActiveAction("understanding");
     setError("");
     setSuccess("");
     setUnderstandingSummary(null);
-    setIntelligenceSummary(null);
 
     try {
-      const response =
-        await apiFetch<UnderstandingResponse>(
-          `/sources/${connectorId}/understanding`,
-          {
-            method: "POST",
-
-            body: JSON.stringify({
-              refresh_concepts: true,
-            }),
-          }
-        );
+      const response = await buildUnderstanding();
 
       setUnderstandingSummary(
         response
@@ -312,69 +351,6 @@ export default function ConnectorLifecycle({
   }
 
 
-  async function runIntelligence() {
-    const domainCode =
-      lifecycle?.domain_code;
-
-    if (!domainCode) {
-      setError(
-        "Assign the connector to a business workspace before generating intelligence."
-      );
-
-      return;
-    }
-
-    setActiveAction(
-      "intelligence"
-    );
-
-    setError("");
-    setSuccess("");
-    setIntelligenceSummary(null);
-
-    try {
-      const response =
-        await apiFetch<IntelligenceResponse>(
-          `/intelligence/${domainCode}/generate`,
-          {
-            method: "POST",
-
-            body: JSON.stringify({
-              project_id: 1,
-              persist: true,
-            }),
-          }
-        );
-
-      setIntelligenceSummary(
-        response
-      );
-
-      setSuccess(
-        response.message
-      );
-
-      await refreshAfterAction();
-
-    } catch (cause) {
-      setError(
-        getMessage(
-          cause,
-          "Unable to generate Enterprise Intelligence."
-        )
-      );
-
-      try {
-        await loadLifecycle();
-      } catch {
-        // Keep the original error visible.
-      }
-
-    } finally {
-      setActiveAction(null);
-    }
-  }
-
 
   const connectionStatus =
     lifecycle?.connection.status
@@ -388,26 +364,22 @@ export default function ConnectorLifecycle({
     lifecycle?.understanding.status
     === "COMPLETED";
 
-  const intelligenceCompleted =
-    lifecycle?.intelligence.status
-    === "COMPLETED";
 
 
   return (
     <div className="space-y-5">
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-600">
-          Enterprise Intelligence Lifecycle
+          Enterprise Knowledge Lifecycle
         </p>
 
         <h3 className="mt-2 text-2xl font-bold text-slate-950">
-          Turn connected data into enterprise intelligence
+          Turn connected data into enterprise knowledge
         </h3>
 
         <p className="mt-2 max-w-3xl leading-6 text-slate-600">
-          Validate the source, discover its assets,
-          identify business meaning, generate findings
-          and prepare trusted context for the AI Advisor.
+          Validate the source, discover its assets and build reusable Enterprise Understanding.
+          This connector workflow ends when enterprise knowledge has been updated.
         </p>
       </div>
 
@@ -431,13 +403,53 @@ export default function ConnectorLifecycle({
         />
       )}
 
-      {intelligenceSummary && (
-        <IntelligenceSummary
-          result={
-            intelligenceSummary
-          }
-        />
-      )}
+      <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5">
+        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-700">
+              Full knowledge pipeline
+            </p>
+
+            <h4 className="mt-2 text-xl font-bold text-slate-950">
+              Build Enterprise Knowledge
+            </h4>
+
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Runs connection validation, asset discovery and Enterprise Understanding in sequence.
+              The pipeline stops immediately if a step fails.
+            </p>
+
+            {activeAction === "pipeline" && pipelineStep && (
+              <p className="mt-3 text-sm font-semibold text-indigo-700">
+                {pipelineStep === "connection"
+                  ? "Step 1 of 3 — Validating connection"
+                  : pipelineStep === "discovery"
+                    ? "Step 2 of 3 — Discovering assets"
+                    : "Step 3 of 3 — Building Enterprise Understanding"}
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={activeAction !== null}
+            onClick={runFullKnowledgePipeline}
+            className="inline-flex min-w-64 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3.5 font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {activeAction === "pipeline" ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Building Enterprise Knowledge...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4" />
+                Build Enterprise Knowledge
+              </>
+            )}
+          </button>
+        </div>
+      </div>
 
       <div className="space-y-3">
         <LifecycleStage
@@ -461,6 +473,10 @@ export default function ConnectorLifecycle({
           }
           active={
             activeAction === "test"
+            || (
+              activeAction === "pipeline"
+              && pipelineStep === "connection"
+            )
           }
           action={
             <StageButton
@@ -499,6 +515,10 @@ export default function ConnectorLifecycle({
           }
           active={
             activeAction === "discovery"
+            || (
+              activeAction === "pipeline"
+              && pipelineStep === "discovery"
+            )
           }
           action={
             <StageButton
@@ -545,8 +565,11 @@ export default function ConnectorLifecycle({
             )
           }
           active={
-            activeAction
-            === "understanding"
+            activeAction === "understanding"
+            || (
+              activeAction === "pipeline"
+              && pipelineStep === "understanding"
+            )
           }
           action={
             <StageButton
@@ -569,74 +592,8 @@ export default function ConnectorLifecycle({
             </StageButton>
           }
         />
-
-        <LifecycleStage
-          number="4"
-          icon={
-            <Sparkles className="h-5 w-5" />
-          }
-          title="Enterprise Intelligence"
-          description="Generate explainable findings, a business narrative, supporting evidence and AI-ready context."
-          status={
-            lifecycle?.intelligence
-              .status
-            || "PENDING"
-          }
-          message={
-            lifecycle?.intelligence
-              .message
-            || (
-              understandingCompleted
-                ? "Ready to generate Enterprise Intelligence."
-                : "Build Enterprise Understanding first."
-            )
-          }
-          active={
-            activeAction
-            === "intelligence"
-          }
-          action={
-            <StageButton
-              loading={
-                activeAction
-                === "intelligence"
-              }
-              loadingLabel="Generating..."
-              disabled={
-                activeAction !== null
-                || !understandingCompleted
-                || !lifecycle?.domain_code
-              }
-              onClick={
-                runIntelligence
-              }
-            >
-              {intelligenceCompleted
-                ? "Regenerate Intelligence"
-                : "Generate Intelligence"}
-            </StageButton>
-          }
-        />
       </div>
 
-      {intelligenceCompleted
-        && lifecycle?.domain_code && (
-        <Link
-          href={
-            `/workspace/${lifecycle.domain_code}`
-          }
-          className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-3 font-semibold text-indigo-700 transition hover:bg-indigo-100"
-        >
-          Open{" "}
-          {
-            lifecycle.domain_name
-            || lifecycle.domain_code
-          }{" "}
-          Workspace
-
-          <ExternalLink className="h-4 w-4" />
-        </Link>
-      )}
     </div>
   );
 }
@@ -687,70 +644,6 @@ function UnderstandingSummary({
 }
 
 
-function IntelligenceSummary({
-  result,
-}: {
-  result: IntelligenceResponse;
-}) {
-  return (
-    <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-indigo-700">
-            Intelligence summary
-          </p>
-
-          {result.summary_text && (
-            <p className="mt-2 max-w-3xl leading-6 text-indigo-950">
-              {result.summary_text}
-            </p>
-          )}
-        </div>
-
-        {result.intelligence_report_id && (
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-indigo-700">
-            Report #
-            {
-              result.intelligence_report_id
-            }
-          </span>
-        )}
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryMetric
-          label="Datasets"
-          value={
-            result.datasets_analysed
-          }
-        />
-
-        <SummaryMetric
-          label="Concepts"
-          value={
-            result.enterprise_concepts
-          }
-        />
-
-        <SummaryMetric
-          label="Findings"
-          value={
-            result.findings_generated
-          }
-        />
-
-        <SummaryMetric
-          label="Evidence Links"
-          value={
-            result.intelligence_links
-          }
-        />
-      </div>
-    </div>
-  );
-}
-
-
 function SummaryMetric({
   label,
   value,
@@ -789,7 +682,7 @@ function LifecycleStage({
   status: StageStatus | string;
   message: string;
   active?: boolean;
-  action: ReactNode;
+  action?: ReactNode;
 }) {
   const completed =
     status === "COMPLETED"

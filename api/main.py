@@ -17,6 +17,10 @@ from api.routers.explorer import router as explorer_router
 from api.routers.intelligence import router as intelligence_router
 from api.routers.knowledge_graph import router as knowledge_graph_router
 from api.routers.sources import router as sources_router
+from api.routers import intelligence_assessments
+from api.routers import intelligence_objects
+from api.routers import intelligence_evolution
+from sapientia.intelligence_experience.api import router as intelligence_experience_router
 
 app = FastAPI(
     title="Sapientia API",
@@ -48,6 +52,10 @@ app.include_router(ai_advisor_router)
 app.include_router(sources_router)
 app.include_router(connector_lifecycle_router)
 app.include_router(enterprise_context_router)
+app.include_router(intelligence_assessments.router)
+app.include_router(intelligence_objects.router)
+app.include_router(intelligence_evolution.router)
+app.include_router(intelligence_experience_router)
 
 
 @app.get("/health")

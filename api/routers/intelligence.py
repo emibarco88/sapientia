@@ -25,6 +25,7 @@ router = APIRouter(
 class GenerateIntelligenceRequest(BaseModel):
     project_id: int = 1
     persist: bool = True
+    force: bool = False
 
 
 @router.post("/{domain_code}/generate")
@@ -40,6 +41,7 @@ def generate_intelligence(
                 project_id=payload.project_id,
                 business_domain=domain_code,
                 persist=payload.persist,
+                force=payload.force,
             )
         )
 

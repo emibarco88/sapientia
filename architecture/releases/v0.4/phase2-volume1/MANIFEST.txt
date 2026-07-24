@@ -1,0 +1,20 @@
+Sapientia Phase 2 Release Package — Volume 1
+Release: v0.4 Enterprise Intelligence Experience
+
+README.md
+architecture/01_solution_architecture.md
+architecture/02_domain_model.md
+architecture/03_data_architecture.md
+architecture/04_backend_architecture.md
+architecture/05_frontend_architecture.md
+architecture/06_ai_and_prompt_architecture.md
+architecture/07_security_observability_and_quality.md
+architecture/08_architecture_decisions.md
+contracts/phase2_api_contract.yaml
+schemas/enterprise_intelligence_object.schema.json
+schemas/domain_narrative.schema.json
+schemas/business_object_profile.schema.json
+schemas/business_health.schema.json
+diagrams/sequence_flows.md
+planning/implementation_map.md
+planning/volume1_acceptance_criteria.md

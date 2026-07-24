@@ -1,0 +1,138 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Activity, ArrowRight, BrainCircuit, CircleAlert, Clock3, FileSearch, HeartPulse, History, RefreshCw, ShieldCheck, Sparkles, Target } from "lucide-react";
+import {
+  BusinessObjectProfile,
+  EvidenceReference,
+  IntelligenceObject,
+  NarrativePayload,
+  NarrativeStatement,
+  TimelinePayload,
+  intelligenceExperienceApi,
+} from "@/lib/intelligence-experience";
+
+type View = "overview" | "narrative" | "health" | "timeline" | "objects";
+
+const pct = (value?: number | null) => value == null ? "—" : `${Math.round(value * 100)}%`;
+const date = (value: string) => new Date(value).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
+const titleCase = (value: string) => value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+
+function StatementCard({ statement, onExplain }: { statement: NarrativeStatement; onExplain: (statement: NarrativeStatement) => void }) {
+  return <article className="ix-statement-card">
+    <div className="ix-card-heading"><div><span className="ix-kicker">{titleCase(statement.section)}</span><h3>{statement.headline}</h3></div><span className={`ix-support ix-support-${statement.support_status.toLowerCase()}`}>{titleCase(statement.support_status)}</span></div>
+    <p>{statement.text}</p>
+    <div className="ix-meta"><span><ShieldCheck size={14} /> {pct(statement.confidence)}</span><span>{statement.evidence?.length || 0} evidence</span><span>{statement.generated_by}</span></div>
+    <button className="ix-text-button" onClick={() => onExplain(statement)}>Explain evidence <ArrowRight size={14} /></button>
+  </article>;
+}
+
+function ObjectCard({ item, onOpen }: { item: IntelligenceObject; onOpen: (id: number) => void }) {
+  return <article className="ix-object-card">
+    <div className="ix-card-heading"><span className="ix-object-type">{titleCase(item.object_type)}</span>{item.severity && <span className="ix-severity">{item.severity}</span>}</div>
+    <h3>{item.title}</h3><p>{item.interpretation || item.description || "No further interpretation is available."}</p>
+    <div className="ix-meta"><span>Confidence {pct(item.confidence_score)}</span><span>Impact {pct(item.impact_score)}</span><span>{item.evidence_count} evidence</span></div>
+    {item.enterprise_object_id ? <button className="ix-text-button" onClick={() => onOpen(item.enterprise_object_id!)}>Open business object <ArrowRight size={14} /></button> : null}
+  </article>;
+}
+
+export default function IntelligenceExperience({ domain }: { domain: string }) {
+  const [view, setView] = useState<View>("overview");
+  const [narrative, setNarrative] = useState<NarrativePayload | null>(null);
+  const [timeline, setTimeline] = useState<TimelinePayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<BusinessObjectProfile | null>(null);
+  const [evidence, setEvidence] = useState<{ statement: NarrativeStatement; evidence: EvidenceReference[] } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const [story, events] = await Promise.all([
+        intelligenceExperienceApi.narrative(domain),
+        intelligenceExperienceApi.timeline(domain),
+      ]);
+      setNarrative(story); setTimeline(events);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "The Intelligence Experience could not be loaded."); }
+    finally { setLoading(false); }
+  }, [domain]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const refresh = async () => {
+    setRefreshing(true); setError(null);
+    try { setNarrative(await intelligenceExperienceApi.refreshStory(domain)); setTimeline(await intelligenceExperienceApi.timeline(domain)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "The narrative could not be refreshed."); }
+    finally { setRefreshing(false); }
+  };
+
+  const openProfile = async (id: number) => {
+    setError(null);
+    try { setProfile(await intelligenceExperienceApi.profile(domain, id)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "The business object profile could not be loaded."); }
+  };
+
+  const explain = async (statement: NarrativeStatement) => {
+    setError(null);
+    try {
+      const result = await intelligenceExperienceApi.explain(statement.statement_id);
+      setEvidence({ statement: result?.statement || statement, evidence: Array.isArray(result?.evidence) ? result.evidence : (statement.evidence || []) });
+    }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Evidence could not be loaded."); }
+  };
+
+  const allObjects = useMemo(() => narrative ? [...narrative.sections.risks, ...narrative.sections.opportunities, ...narrative.sections.recommendations] : [], [narrative]);
+
+  if (loading) return <div className="ix-loading"><span className="ix-spinner" /><h2>Building the enterprise story…</h2><p>Connecting narrative, health, timeline and evidence.</p></div>;
+  if (error && !narrative) return <div className="ix-empty"><CircleAlert size={30} /><h2>Intelligence Experience unavailable</h2><p>{error}</p><button className="sap-button sap-button-primary" onClick={() => void load()}>Try again</button></div>;
+  if (!narrative) return null;
+
+  const health = narrative.business_health;
+  return <div className="ix-shell">
+    {error && <div className="friendly-alert" role="alert">{error}</div>}
+    <section className="ix-hero">
+      <div><span className="sap-eyebrow">Enterprise Intelligence Experience</span><h2>{narrative.assessment.assessment_title}</h2><p>{narrative.executive_summary.text}</p>
+        <div className="ix-meta"><span><ShieldCheck size={14} /> Version {narrative.assessment.assessment_version}</span><span><Clock3 size={14} /> {date(narrative.assessment.generated_at)}</span><span>{narrative.provenance.intelligence_object_count} intelligence objects</span></div>
+      </div>
+      <button className="sap-button sap-button-primary" onClick={() => void refresh()} disabled={refreshing}><RefreshCw size={16} className={refreshing ? "ix-spin" : ""} /> {refreshing ? "Refreshing…" : "Refresh story"}</button>
+    </section>
+
+    <nav className="ix-tabs" aria-label="Intelligence Experience views">
+      {([['overview','Overview',Sparkles],['narrative','Narrative',BrainCircuit],['health','Health analysis',HeartPulse],['timeline','Timeline',History],['objects','Business objects',Target]] as const).map(([key,label,Icon]) =>
+        <button key={key} className={view === key ? "is-active" : ""} onClick={() => setView(key)}><Icon size={16}/>{label}</button>)}
+    </nav>
+
+    {view === "overview" && <section className="ix-health-grid">
+      <article className="ix-health-score"><span className="ix-kicker">Business health</span><strong>{health.score ?? "—"}</strong><h3>{titleCase(health.label)}</h3><p>{health.explanation}</p></article>
+      <article className="ix-metric"><Activity/><span>Confidence</span><strong>{pct(health.confidence)}</strong><small>Strength of grounded intelligence</small></article>
+      <article className="ix-metric"><FileSearch/><span>Evidence coverage</span><strong>{pct(health.evidence_coverage)}</strong><small>Signals supported by evidence</small></article>
+      <article className="ix-metric"><Target/><span>Assessment objects</span><strong>{narrative.provenance.intelligence_object_count}</strong><small>Current structured intelligence</small></article>
+    </section>}
+
+    {(view === "overview" || view === "narrative") && <>
+      <section className="ix-section"><div className="sap-section-header"><div><span className="sap-eyebrow">Current enterprise state</span><h2 className="sap-section-title">What Sapientia understands now</h2></div></div><div className="ix-card-grid">{narrative.sections.current_state.map((s,index) => <StatementCard key={`current-${s.statement_id}-${index}`} statement={s} onExplain={explain}/>)}</div></section>
+      <section className="ix-section ix-three-columns">
+        <div><h2><CircleAlert size={19}/> Risks</h2>{narrative.sections.risks.slice(0,4).map((o)=><ObjectCard key={o.intelligence_object_id} item={o} onOpen={openProfile}/>)}</div>
+        <div><h2><Sparkles size={19}/> Opportunities</h2>{narrative.sections.opportunities.slice(0,4).map((o)=><ObjectCard key={o.intelligence_object_id} item={o} onOpen={openProfile}/>)}</div>
+        <div><h2><Target size={19}/> Recommendations</h2>{narrative.sections.recommendations.slice(0,4).map((o)=><ObjectCard key={o.intelligence_object_id} item={o} onOpen={openProfile}/>)}</div>
+      </section>
+    </>}
+
+    {view === "health" && <section className="ix-section">
+      <div className="ix-health-analysis-intro">
+        <div className="ix-health-analysis-copy"><span className="sap-eyebrow">Health analysis</span><h2>Why the current health score looks this way</h2><p>{health.explanation}</p></div>
+        <div className="ix-health-analysis-summary"><span>Health score<strong>{health.score ?? "—"}</strong></span><span>Confidence<strong>{pct(health.confidence)}</strong></span><span>Evidence coverage<strong>{pct(health.evidence_coverage)}</strong></span><span>Assessment items<strong>{narrative.provenance.intelligence_object_count}</strong></span></div>
+      </div>
+      <div className="ix-two-columns"><div><h2>Key business dependencies</h2><p className="ix-health-driver-note">Highly connected concepts and entities that materially support the current assessment. A dependency is not automatically positive; it is important because changes to it may affect several parts of the domain.</p>{health.positive_drivers.length ? health.positive_drivers.map((s,index)=><StatementCard key={`dependency-${s.statement_id}-${index}`} statement={s} onExplain={explain}/>) : <p className="ix-muted">No key dependencies are currently available.</p>}</div><div><h2>Risk signals</h2><p className="ix-health-driver-note">Signals that reduce confidence, indicate exposure or require closer attention.</p>{health.negative_drivers.length ? health.negative_drivers.map((s,index)=><StatementCard key={`risk-${s.statement_id}-${index}`} statement={s} onExplain={explain}/>) : <p className="ix-muted">No negative health signals are currently available.</p>}</div></div>
+    </section>}
+
+    {view === "timeline" && <section className="ix-section"><div className="sap-section-header"><div><span className="sap-eyebrow">Enterprise evolution</span><h2 className="sap-section-title">Assessment timeline</h2></div></div><div className="ix-timeline">{timeline?.timeline.length ? timeline.timeline.map((event)=><article key={event.timeline_event_id}><span className="ix-timeline-dot"/><div><span className="ix-kicker">Version {event.assessment_version ?? "—"} · {date(event.occurred_at)}</span><h3>{event.title}</h3><p>{event.description}</p><div className="ix-meta"><span>{event.object_count} objects</span><span>Confidence {pct(event.confidence)}</span>{event.changes.confidence_delta != null && <span>Δ {event.changes.confidence_delta.toFixed(2)}</span>}</div></div></article>) : <div className="ix-empty"><History size={28}/><h2>No timeline events yet</h2><p>Generate another assessment to establish an intelligence history.</p></div>}</div></section>}
+
+    {view === "objects" && <section className="ix-section"><div className="sap-section-header"><div><span className="sap-eyebrow">Enterprise objects</span><h2 className="sap-section-title">Objects connected to current intelligence</h2></div></div><div className="ix-card-grid">{allObjects.length ? allObjects.map((o)=><ObjectCard key={o.intelligence_object_id} item={o} onOpen={openProfile}/>) : <div className="ix-empty"><Target size={28}/><h2>No linked business objects</h2><p>Current intelligence objects are not yet linked to enterprise objects.</p></div>}</div></section>}
+
+    {profile && <div className="ix-modal-backdrop" role="presentation" onMouseDown={() => setProfile(null)}><aside className="ix-drawer" role="dialog" aria-modal="true" onMouseDown={(e)=>e.stopPropagation()}><button className="ix-close" onClick={()=>setProfile(null)}>Close</button><span className="sap-eyebrow">Business object profile</span><h2>{profile.name}</h2><p>{profile.description || profile.summary}</p><div className="ix-profile-facts"><span>Type<strong>{titleCase(profile.object_type)}</strong></span><span>Confidence<strong>{pct(profile.confidence)}</strong></span><span>Intelligence<strong>{profile.intelligence_objects.length}</strong></span></div><h3>Related intelligence</h3>{profile.intelligence_objects.map((o)=><ObjectCard key={o.intelligence_object_id} item={o} onOpen={()=>{}}/>)}</aside></div>}
+
+    {evidence && <div className="ix-modal-backdrop" role="presentation" onMouseDown={() => setEvidence(null)}><aside className="ix-drawer" role="dialog" aria-modal="true" onMouseDown={(e)=>e.stopPropagation()}><button className="ix-close" onClick={()=>setEvidence(null)}>Close</button><span className="sap-eyebrow">Evidence explanation</span><h2>{evidence.statement?.headline || "Evidence explanation"}</h2><p>{evidence.statement?.text || "Review the supporting evidence below."}</p><div className="ix-evidence-summary"><h3>Why Sapientia reached this conclusion</h3><p>This statement is supported by {(evidence.evidence || []).length} evidence reference(s), with {pct(evidence.statement?.confidence)} statement confidence. The supporting records below show the provenance available in the Enterprise Knowledge Repository.</p></div><div className="ix-evidence-context"><span>Generated by<strong>{evidence.statement?.generated_by || "Sapientia"}</strong></span><span>Support status<strong>{titleCase(evidence.statement?.support_status || "unknown")}</strong></span><span>Business objects<strong>{evidence.statement?.business_object_ids?.length || 0}</strong></span><span>Assessment links<strong>{evidence.statement?.intelligence_object_ids?.length || 0}</strong></span></div><div className="ix-evidence-list">{(evidence.evidence || []).length ? (evidence.evidence || []).map((item,index)=><article key={`${String(item.evidence_id)}-${index}`}><span className="ix-kicker">{titleCase(item.evidence_type || "evidence")}</span><h3>{item.title || "Supporting evidence"}</h3><p>{item.excerpt || "This reference supports the selected statement; no source excerpt was stored."}</p><div className="ix-meta"><span>{item.source || "Sapientia EKR"}</span><span>{titleCase(item.support_status || "supported")}</span><span>{pct(item.confidence)}</span></div><div className="ix-evidence-context"><span>Dataset ID<strong>{item.dataset_id ?? "Not recorded"}</strong></span><span>Column ID<strong>{item.column_id ?? "Not recorded"}</strong></span><span>Knowledge item<strong>{item.knowledge_item_id ?? "Not recorded"}</strong></span><span>Enterprise object<strong>{item.enterprise_object_id ?? "Not recorded"}</strong></span></div></article>) : <p className="ix-muted">No separate evidence references were returned. The statement itself remains grounded in the current assessment, but deeper source provenance has not yet been persisted for this item.</p>}</div></aside></div>}
+  </div>;
+}
