@@ -20,6 +20,8 @@ from api.routers.sources import router as sources_router
 from api.routers import intelligence_assessments
 from api.routers import intelligence_objects
 from api.routers import intelligence_evolution
+from api.routers import knowledge_evolution
+from api.routers import phase3_final
 from sapientia.intelligence_experience.api import router as intelligence_experience_router
 
 app = FastAPI(
@@ -55,6 +57,8 @@ app.include_router(enterprise_context_router)
 app.include_router(intelligence_assessments.router)
 app.include_router(intelligence_objects.router)
 app.include_router(intelligence_evolution.router)
+app.include_router(knowledge_evolution.router)
+app.include_router(phase3_final.router)
 app.include_router(intelligence_experience_router)
 
 

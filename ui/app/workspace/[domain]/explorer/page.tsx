@@ -1,6 +1,7 @@
 "use client";
 
-import { Network, Search, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { History, Network } from "lucide-react";
 import { useParams } from "next/navigation";
 import EnterpriseExplorer from "@/features/explorer/components/EnterpriseExplorer";
 import AppShell from "@/components/layout/AppShell";
@@ -13,19 +14,22 @@ export default function EnterpriseExplorerPage() {
   return (
     <AppShell>
       <div className="vnext-page">
-        <header className="vnext-domain-hero">
+        <header className="vnext-domain-hero p3g-explorer-header">
           <div>
             <span className="vnext-eyebrow">Explore {domain}</span>
-            <h1>Follow the evidence behind the business.</h1>
-            <p>Search for a business concept first, then inspect its evidence, relationships and graph only when deeper investigation is useful.</p>
+            <h1>Explore business knowledge and evidence.</h1>
+            <p>
+              Search enterprise concepts and inspect their evidence, relationships and connected business objects.
+            </p>
           </div>
-          <span className="vnext-context-pill"><Network size={14} /> Evidence-ready knowledge</span>
+          <div className="p3g-explorer-header-actions">
+            <span className="vnext-context-pill"><Network size={14} /> Evidence-ready knowledge</span>
+            <Link className="p3g-history-link" href={`/workspace/${domain}/explorer/history`}>
+              <History size={14} /> History &amp; lineage
+            </Link>
+          </div>
         </header>
-<section className="vnext-explorer-intro">
-          <Search size={20} />
-          <div><strong>Search first. Graph second.</strong><span>Select a result to reveal its business meaning, supporting evidence and connected enterprise objects.</span></div>
-          <Sparkles size={17} />
-        </section>
+
         <EnterpriseExplorer projectId={projectId} domain={domain} />
       </div>
     </AppShell>

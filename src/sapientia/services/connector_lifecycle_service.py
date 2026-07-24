@@ -29,6 +29,12 @@ from sapientia.orchestration.enterprise_understanding_orchestrator import (
 from sapientia.services.enterprise_understanding_service import (
     EnterpriseUnderstandingService,
 )
+from sapientia.services.knowledge.enterprise_knowledge_version_service import (
+    EnterpriseKnowledgeVersionService,
+)
+from sapientia.services.knowledge.enterprise_knowledge_evolution_service import (
+    EnterpriseKnowledgeEvolutionService,
+)
 
 
 class ConnectorLifecycleService:
@@ -321,6 +327,15 @@ class ConnectorLifecycleService:
                 ),
             )
 
+            knowledge_version = EnterpriseKnowledgeVersionService().resolve_current(
+                project_id=project_id,
+                business_domain=business_domain,
+            )
+            knowledge_evolution = EnterpriseKnowledgeEvolutionService().compare_with_previous(
+                current_knowledge_version_id=int(knowledge_version["knowledge_version_id"]),
+                project_id=project_id,
+            )
+
             message = str(
                 understanding_result.get(
                     "message"
@@ -329,6 +344,10 @@ class ConnectorLifecycleService:
                     "Enterprise Understanding completed "
                     f"for {len(dataset_ids)} dataset(s)."
                 )
+            )
+            message = (
+                f"{message} Enterprise Knowledge Version "
+                f"{knowledge_version['knowledge_version']} is ready."
             )
 
             self._set_understanding_status(
@@ -346,9 +365,11 @@ class ConnectorLifecycleService:
                         business_domain
                     ),
                     dataset_ids=dataset_ids,
-                    understanding_result=(
-                        understanding_result
-                    ),
+                    understanding_result={
+                        **understanding_result,
+                        "knowledge_version": knowledge_version,
+                        "knowledge_evolution": knowledge_evolution,
+                    },
                     message=message,
                 )
             )

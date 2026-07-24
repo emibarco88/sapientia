@@ -37,6 +37,9 @@ from sapientia.services.intelligence.assessment_evolution_service import (
 from sapientia.services.knowledge.enterprise_knowledge_version_service import (
     EnterpriseKnowledgeVersionService,
 )
+from sapientia.services.knowledge.enterprise_knowledge_evolution_service import (
+    EnterpriseKnowledgeEvolutionService,
+)
 
 
 class EnterpriseIntelligenceGenerationService:
@@ -77,6 +80,10 @@ class EnterpriseIntelligenceGenerationService:
             project_id=project_id,
             business_domain=normalized_domain,
         )
+        knowledge_evolution = EnterpriseKnowledgeEvolutionService().compare_with_previous(
+            current_knowledge_version_id=int(knowledge_version["knowledge_version_id"]),
+            project_id=project_id,
+        )
         duplicate = self._get_duplicate_assessment_by_knowledge_version(
             project_id=project_id,
             business_domain=normalized_domain,
@@ -103,6 +110,7 @@ class EnterpriseIntelligenceGenerationService:
                 "knowledge_version_id": knowledge_version["knowledge_version_id"],
                 "knowledge_version": knowledge_version["knowledge_version"],
                 "latest_assessment": duplicate,
+                "knowledge_evolution": knowledge_evolution,
             }
 
         self._set_domain_intelligence_status(
@@ -163,6 +171,7 @@ class EnterpriseIntelligenceGenerationService:
                 "knowledge_version_id": knowledge_version["knowledge_version_id"],
                 "knowledge_version": knowledge_version["knowledge_version"],
                 "knowledge_snapshot": knowledge_version.get("snapshot_json"),
+                "knowledge_evolution": knowledge_evolution,
                 "message": message,
                 "project_id": project_id,
                 "business_domain": normalized_domain,

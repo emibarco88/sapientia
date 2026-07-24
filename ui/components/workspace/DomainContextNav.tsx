@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BrainCircuit, FileText, HeartPulse, LayoutDashboard, Network, Sparkles } from "lucide-react";
+import { BrainCircuit, FileText, LayoutDashboard, Network, Sparkles } from "lucide-react";
 
 const items = (domain: string) => [
   { label: "Overview", href: `/domains/${domain}`, icon: LayoutDashboard, match: [`/domains/${domain}`, `/workspace/${domain}`] },
-  { label: "Experience", href: `/workspace/${domain}/experience`, icon: HeartPulse },
   { label: "Intelligence", href: `/workspace/${domain}/intelligence`, icon: Sparkles },
-  { label: "Explorer", href: `/workspace/${domain}/explorer`, icon: Network },
   { label: "Reports", href: `/workspace/${domain}/reports`, icon: FileText },
+  { label: "Explorer", href: `/workspace/${domain}/explorer`, icon: Network },
   { label: "AI Advisor", href: `/workspace/${domain}/ai`, icon: BrainCircuit },
 ];
 
@@ -34,7 +33,13 @@ export default function DomainContextNav({ domain: suppliedDomain }: { domain?: 
       </div>
       <nav className="p2c-domain-tabs" aria-label={`${domain} workspace navigation`}>
         {items(domain).map(({ label, href, icon: Icon, match }) => {
-          const active = match ? match.includes(pathname) : pathname.startsWith(href);
+          const active = match
+            ? match.includes(pathname)
+            : pathname.startsWith(href) ||
+              (label === "Intelligence" && (
+                pathname.startsWith(`/workspace/${domain}/executive-intelligence`) ||
+                pathname.startsWith(`/workspace/${domain}/evolution`)
+              ));
           return <Link key={label} href={href} className={active ? "is-active" : ""}><Icon size={16}/><span>{label}</span></Link>;
         })}
       </nav>
